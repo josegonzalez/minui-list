@@ -38,8 +38,8 @@ jobs:
 
       - name: Move the codebase to the correct location
         run: |
-          mkdir -p workspace/repo
-          mv *.c Makefile workspace/repo
+          mkdir -p union-${{ env.TOOLCHAIN_NAME }}-toolchain/workspace/repo
+          mv *.c Makefile union-${{ env.TOOLCHAIN_NAME }}-toolchain/workspace/repo
 
       - name: Build the toolchain
         run: |
