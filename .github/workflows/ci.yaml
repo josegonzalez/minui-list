@@ -48,13 +48,17 @@ jobs:
         working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
 
       - name: Start a shell
-        run: docker run -d --name toolchain --rm -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain /bin/bash
+        id: shell
+        run: |
+          docker run -d --rm -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain /bin/bash
+          container_id="$(docker container ls | grep tg5040-toolchain | awk '{print $1}')"
+          echo "container-id=$container_id" >> $GITHUB_OUTPUT
         working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
 
       - name: Build the application
         run: |
-          docker container exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- "toolchain" make -C /root/workspace/repo setup
-          docker container exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- "toolchain" make -C /root/workspace/repo setup
+          docker container exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- "${{ steps.shell.outputs.container-id }}" make -C /root/workspace/repo setup
+          docker container exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- "${{ steps.shell.outputs.container-id }}" make -C /root/workspace/repo setup
         working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
 
       - name: Ensure the binary exists
