@@ -61,9 +61,12 @@ jobs:
       - name: Ensure the binary exists
         id: binary
         run: |
-          ls -l union-${{ env.TOOLCHAIN_NAME }}-toolchain/workspace/repo/$(cat Makefile | grep ^TARGET | awk '{print $3}')
-          cp union-${{ env.TOOLCHAIN_NAME }}-toolchain/workspace/repo/$(cat Makefile | grep ^TARGET | awk '{print $3}') dist/
-          echo "filename=$(cat Makefile | grep ^TARGET | awk '{print $3}')" >> $GITHUB_OUTPUT
+          ls -l workspace/repo/
+          cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}'
+          mkdir -p ../dist
+          cp workspace/repo/$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}') ../dist/
+          echo "filename=$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')" >> $GITHUB_OUTPUT
+        working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
 
       - name: Attest Build Provenance
         uses: actions/attest-build-provenance@v2.1.0
