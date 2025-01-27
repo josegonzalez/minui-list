@@ -45,18 +45,20 @@ jobs:
         run: |
           docker build -t ${{ env.TOOLCHAIN_NAME }} .
           touch .build
+        working-directory: union-${{ env.TOOLCHAIN_NAME }}
 
       - name: Build the application
         run: |
           docker run --rm -v $(pwd):/workspace ${{ env.TOOLCHAIN_NAME }} make
           docker run -it --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --rm -v "$(WORKSPACE_DIR)":/root/workspace ${{ env.TOOLCHAIN_NAME }} make -C /root/workspace/repo
           echo $?
+        working-directory: union-${{ env.TOOLCHAIN_NAME }}
 
       - name: Ensure the binary exists
         id: binary
         run: |
-          ls -l workspace/repo/$(cat Makefile | grep ^TARGET | awk '{print $3}')
-          cp workspace/repo/$(cat Makefile | grep ^TARGET | awk '{print $3}') dist/
+          ls -l union-${{ env.TOOLCHAIN_NAME }}/workspace/repo/$(cat Makefile | grep ^TARGET | awk '{print $3}')
+          cp union-${{ env.TOOLCHAIN_NAME }}/workspace/repo/$(cat Makefile | grep ^TARGET | awk '{print $3}') dist/
           echo "filename=$(cat Makefile | grep ^TARGET | awk '{print $3}')" >> $GITHUB_OUTPUT
 
       - name: Attest Build Provenance
