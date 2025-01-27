@@ -49,7 +49,7 @@ jobs:
 
       - name: Build the application
         run: |
-          docker run -it --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --rm -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain make -C /root/workspace/repo
+          docker run --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --rm -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain make -C /root/workspace/repo
         working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
 
       - name: Ensure the binary exists
