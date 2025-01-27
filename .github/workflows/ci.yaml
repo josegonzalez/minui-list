@@ -1,0 +1,71 @@
+---
+name: "ci"
+
+# yamllint disable-line rule:truthy
+on:
+  pull_request:
+    branches:
+      - "*"
+  push:
+    branches:
+      - main
+
+permissions:
+  attestations: write
+  id-token: write
+  contents: write
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-24.04-arm
+    env:
+      TOOLCHAIN_NAME: tg5040-toolchain
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Clone the union repository
+        run: git clone https://github.com/shauninman/union-${{ env.TOOLCHAIN_NAME }}
+
+      - name: Move the codebase to the correct location
+        run: |
+          mkdir -p workspace/repo
+          mv *.c Makefile workspace/repo
+
+      - name: Build the codebase
+        run: |
+          docker build -t ${{ env.TOOLCHAIN_NAME }} .
+          touch .build
+
+      - name: Build the application
+        run: |
+          docker run --rm -v $(pwd):/workspace ${{ env.TOOLCHAIN_NAME }} make
+          docker run -it --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --rm -v "$(WORKSPACE_DIR)":/root/workspace ${{ env.TOOLCHAIN_NAME }} make -C /root/workspace/repo
+          echo $?
+
+      - name: Ensure the binary exists
+        id: binary
+        run: |
+          ls -l workspace/repo/$(cat Makefile | grep ^TARGET | awk '{print $3}')
+          cp workspace/repo/$(cat Makefile | grep ^TARGET | awk '{print $3}') dist/
+          echo "filename=$(cat Makefile | grep ^TARGET | awk '{print $3}')" >> $GITHUB_OUTPUT
+
+      - name: Attest Build Provenance
+        uses: actions/attest-build-provenance@v2.1.0
+        with:
+          subject-path: "dist/${{ steps.binary.outputs.filename }}"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
