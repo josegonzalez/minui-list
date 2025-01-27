@@ -480,10 +480,11 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     }
 
     // the rest of the function is just for drawing your app to the screen
-    for (int i = state->list_state->first_visible; i < state->list_state->last_visible; i++)
+    int selected_row = state->list_state->selected - state->list_state->first_visible;
+    for (int i = state->list_state->first_visible, j = 0; i < state->list_state->last_visible; i++, j++)
     {
         int available_width = (screen->w) - SCALE1(PADDING * 2);
-        if (i == state->list_state->first_visible && !(screen->w))
+        if (i == state->list_state->first_visible && !(j != selected_row))
         {
             available_width -= ow;
         }
@@ -492,9 +493,9 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         char display_name[256];
         int text_width = GFX_truncateText(font.large, state->list_state->items[i].name, display_name, available_width, SCALE1(BUTTON_PADDING * 2));
         int max_width = MIN(available_width, text_width);
-        if (i == state->list_state->selected)
+        if (j == selected_row)
         {
-            GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){SCALE1(PADDING), SCALE1(PADDING + ((i + has_top_margin) * PILL_SIZE)), max_width, SCALE1(PILL_SIZE)});
+            GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){SCALE1(PADDING), SCALE1(PADDING + ((j + has_top_margin) * PILL_SIZE)), max_width, SCALE1(PILL_SIZE)});
             text_color = COLOR_BLACK;
         }
         SDL_Surface *text = TTF_RenderUTF8_Blended(font.large, state->list_state->items[i].name, text_color);
