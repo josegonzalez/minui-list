@@ -47,10 +47,14 @@ jobs:
           touch .build
         working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
 
+      - name: Start a shell
+        run: docker run -d --name toolchain --rm -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain /bin/bash
+        working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
+
       - name: Build the application
         run: |
-          docker run --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --rm -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain make -C /root/workspace/repo setup
-          docker run --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --rm -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain make -C /root/workspace/repo
+          docker container exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- "toolchain" make -C /root/workspace/repo setup
+          docker container exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- "toolchain" make -C /root/workspace/repo setup
         working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
 
       - name: Ensure the binary exists
