@@ -49,13 +49,13 @@ jobs:
 
       - name: Build the application
         run: |
-          docker run -d -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain /bin/bash tail -f /dev/null
+          docker run -d -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain tail -f /dev/null
           container_id="$(docker container ls | grep tg5040-toolchain | awk '{print $1}')"
           sleep 5
           docker container ls -a
-          docker logs "$container_id"
           docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- "$container_id" make -C /root/workspace/repo setup
           docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- "$container_id" make -C /root/workspace/repo
+          docker container rm -f "$container_id"
         working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
 
       - name: Ensure the binary exists
