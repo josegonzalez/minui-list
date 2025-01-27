@@ -332,7 +332,14 @@ void handle_input(struct AppState *state)
     {
         state->redraw = 0;
         state->quitting = 1;
-        state->exit_code = EXIT_FAILURE;
+        if (is_cancel_button_pressed)
+        {
+            state->exit_code = 2;
+        }
+        else
+        {
+            state->exit_code = 3;
+        }
         return;
     }
 
