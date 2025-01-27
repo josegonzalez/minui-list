@@ -49,8 +49,9 @@ jobs:
 
       - name: Build the application
         run: |
-          docker run -d --rm -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain sleep forever
+          docker run -d --rm -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain /bin/bash sleep forever
           container_id="$(docker container ls | grep tg5040-toolchain | awk '{print $1}')"
+          sleep 5
           docker container ls -a
           docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- "$container_id" make -C /root/workspace/repo setup
           docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- "$container_id" make -C /root/workspace/repo
