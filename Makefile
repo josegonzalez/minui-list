@@ -22,8 +22,10 @@ CFLAGS   = $(ARCH) -fomit-frame-pointer
 CFLAGS  += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) -Ofast -std=gnu99
 FLAGS = -L$(LD_LIBRARY_PATH) -ldl -lmsettings $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
 
-all: minui $(PREFIX)/include/msettings.h
+all: minui $(PREFIX)/include/msettings.h include/parson
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) $(CC) $(SOURCE) -o $(PRODUCT)-$(PLATFORM) $(CFLAGS) $(FLAGS)
+
+setup: minui $(PREFIX)/include/msettings.h include/parson
 
 clean:
 	rm -rf $(PRODUCT)-$(PLATFORM)
