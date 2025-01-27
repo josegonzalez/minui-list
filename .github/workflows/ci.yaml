@@ -41,7 +41,7 @@ jobs:
           mkdir -p workspace/repo
           mv *.c Makefile workspace/repo
 
-      - name: Build the codebase
+      - name: Build the toolchain
         run: |
           docker build -t ${{ env.TOOLCHAIN_NAME }} .
           touch .build
@@ -50,7 +50,6 @@ jobs:
       - name: Build the application
         run: |
           docker run -it --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --rm -v "$(WORKSPACE_DIR)":/root/workspace ${{ env.TOOLCHAIN_NAME }} make -C /root/workspace/repo
-          echo $?
         working-directory: union-${{ env.TOOLCHAIN_NAME }}
 
       - name: Ensure the binary exists
