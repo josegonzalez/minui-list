@@ -61,10 +61,8 @@ jobs:
       - name: Ensure the binary exists
         id: binary
         run: |
-          ls -l workspace/repo/
-          cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}'
           mkdir -p ../dist
-          cp workspace/repo/$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}') ../dist/
+          cp "workspace/repo/$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')-${{ env.TOOLCHAIN_NAME }}" ../dist/
           echo "filename=$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')" >> $GITHUB_OUTPUT
         working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
 
