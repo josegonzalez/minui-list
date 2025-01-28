@@ -23,18 +23,18 @@ jobs:
       fail-fast: false
       matrix:
         toolchain:
-          - gkdpixel
-          - m17
+          - gkdpixel # (deprecated)
+          - m17 # (deprecated)
           - magicmini
-          - miyoomini
+          - miyoomini # (deprecated)
           - my282
           - my355
-          - rg35xx
+          - rg35xx # (deprecated)
           - rg35xxplus
-          - rgb30
+          - rgb30 # (deprecated)
           - tg3040
           - tg5040
-          - trimuismart
+          - trimuismart # (deprecated)
           - zero28
 
     steps:
@@ -59,7 +59,7 @@ jobs:
         run: |
           set -x
           docker run -d -v "$(pwd)/workspace":/root/workspace ${{ matrix.toolchain }}-toolchain tail -f /dev/null
-          container_id="$(docker container ls | grep tg5040-toolchain | awk '{print $1}')"
+          container_id="$(docker container ls | grep ${{ matrix.toolchain }}-toolchain | awk '{print $1}')"
           sleep 5
           docker container ls -a
           echo "Container ID: $container_id"
