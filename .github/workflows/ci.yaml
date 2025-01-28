@@ -72,6 +72,7 @@ jobs:
         id: binary
         run: |
           mkdir -p ../dist
+          ls -lah workspace/repo/
           cp "workspace/repo/$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')-${{ matrix.toolchain }}" ../dist/
           echo "filename=$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')" >> $GITHUB_OUTPUT
         working-directory: union-${{ matrix.toolchain }}-toolchain
