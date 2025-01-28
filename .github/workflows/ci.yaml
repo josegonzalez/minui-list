@@ -20,6 +20,7 @@ jobs:
     name: ci
     runs-on: ubuntu-24.04-arm
     strategy:
+      fail-fast: false
       matrix:
         toolchain:
           - gkdpixel
