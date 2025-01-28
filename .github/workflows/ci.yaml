@@ -19,8 +19,22 @@ jobs:
   ci:
     name: ci
     runs-on: ubuntu-24.04-arm
-    env:
-      TOOLCHAIN_NAME: tg5040
+    strategy:
+      matrix:
+        toolchain:
+          - gkdpixel
+          - m17
+          - magicmini
+          - miyoomini
+          - my282
+          - my355
+          - rg35xx
+          - rg35xxplus
+          - rgb30
+          - tg3040
+          - tg5040
+          - trimuismart
+          - zero28
 
     steps:
       - name: Checkout
@@ -34,42 +48,42 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Clone the union repository
-        run: git clone https://github.com/shauninman/union-${{ env.TOOLCHAIN_NAME }}-toolchain
+        run: git clone https://github.com/shauninman/union-${{ matrix.toolchain }}-toolchain
 
       - name: Move the codebase to the correct location
         run: |
-          mkdir -p union-${{ env.TOOLCHAIN_NAME }}-toolchain/workspace/repo
-          mv *.c Makefile union-${{ env.TOOLCHAIN_NAME }}-toolchain/workspace/repo
+          mkdir -p union-${{ matrix.toolchain }}-toolchain/workspace/repo
+          mv *.c Makefile union-${{ matrix.toolchain }}-toolchain/workspace/repo
 
       - name: Build the toolchain
         run: |
-          docker build -t ${{ env.TOOLCHAIN_NAME }}-toolchain .
+          docker build -t ${{ matrix.toolchain }}-toolchain .
           touch .build
-        working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
+        working-directory: union-${{ matrix.toolchain }}-toolchain
 
       - name: Build the application
         run: |
-          docker run -d -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain tail -f /dev/null
+          docker run -d -v "$(pwd)/workspace":/root/workspace ${{ matrix.toolchain }}-toolchain tail -f /dev/null
           container_id="$(docker container ls | grep tg5040-toolchain | awk '{print $1}')"
           sleep 5
           docker container ls -a
           docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --env PREFIX=/usr "$container_id" make -C /root/workspace/repo setup
           docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --env PREFIX=/usr "$container_id" make -C /root/workspace/repo
           docker container rm -f "$container_id"
-        working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
+        working-directory: union-${{ matrix.toolchain }}-toolchain
 
       - name: Ensure the binary exists
         id: binary
         run: |
           mkdir -p ../dist
-          cp "workspace/repo/$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')-${{ env.TOOLCHAIN_NAME }}" ../dist/
+          cp "workspace/repo/$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')-${{ matrix.toolchain }}" ../dist/
           echo "filename=$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')" >> $GITHUB_OUTPUT
-        working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
+        working-directory: union-${{ matrix.toolchain }}-toolchain
 
       - name: Attest Build Provenance
         uses: actions/attest-build-provenance@v2.1.0
         with:
-          subject-path: "dist/${{ steps.binary.outputs.filename }}-${{ env.TOOLCHAIN_NAME}}"
+          subject-path: "dist/${{ steps.binary.outputs.filename }}-${{ matrix.toolchain}}"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
