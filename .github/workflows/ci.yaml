@@ -63,8 +63,8 @@ jobs:
           sleep 5
           docker container ls -a
           echo "Container ID: $container_id"
-          docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --env PREFIX=/usr "$container_id" make -C /root/workspace/repo setup
-          docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --env PREFIX=/usr "$container_id" make -C /root/workspace/repo
+          docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --env PLATFORM=${{ matrix.toolchain }} --env PREFIX=/usr "$container_id" make -C /root/workspace/repo setup
+          docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --env PLATFORM=${{ matrix.toolchain }} --env PREFIX=/usr "$container_id" make -C /root/workspace/repo
           docker container rm -f "$container_id"
         working-directory: union-${{ matrix.toolchain }}-toolchain
 
