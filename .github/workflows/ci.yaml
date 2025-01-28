@@ -41,13 +41,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Clone the union repository
         run: git clone https://github.com/shauninman/union-${{ matrix.toolchain }}-toolchain
 
@@ -64,10 +57,12 @@ jobs:
 
       - name: Build the application
         run: |
+          set -x
           docker run -d -v "$(pwd)/workspace":/root/workspace ${{ matrix.toolchain }}-toolchain tail -f /dev/null
           container_id="$(docker container ls | grep tg5040-toolchain | awk '{print $1}')"
           sleep 5
           docker container ls -a
+          echo "Container ID: $container_id"
           docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --env PREFIX=/usr "$container_id" make -C /root/workspace/repo setup
           docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --env PREFIX=/usr "$container_id" make -C /root/workspace/repo
           docker container rm -f "$container_id"
