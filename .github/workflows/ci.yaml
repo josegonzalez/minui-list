@@ -71,19 +71,17 @@ jobs:
       - name: Ensure the binary exists
         id: binary
         run: |
-          mkdir -p ../dist
-          ls -lah workspace/repo/
-          cp "workspace/repo/$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')-${{ matrix.toolchain }}" ../dist/
-          echo "filename=$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')" >> $GITHUB_OUTPUT
-        working-directory: union-${{ matrix.toolchain }}-toolchain
+          filename="$(cat union-${{ matrix.toolchain }}-toolchain/workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')-${{ matrix.toolchain }}"
+          cp "union-${{ matrix.toolchain }}-toolchain/workspace/repo/$filename" "$filename"
+          echo "filename=$filename" >> $GITHUB_OUTPUT
 
       - name: Attest Build Provenance
         uses: actions/attest-build-provenance@v2.1.0
         with:
-          subject-path: "dist/${{ steps.binary.outputs.filename }}-${{ matrix.toolchain}}"
+          subject-path: "${{ steps.binary.outputs.filename }}"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.toolchain }}
-          path: dist/*
+          name: ${{ steps.binary.outputs.filename }}
+          path: ${{ steps.binary.outputs.filename }}
