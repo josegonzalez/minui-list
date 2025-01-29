@@ -16,8 +16,25 @@ jobs:
   ci:
     name: ci
     runs-on: ubuntu-24.04-arm
-    env:
-      TOOLCHAIN_NAME: tg5040
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain:
+          # - gkdpixel deprecated, but also i386 only so it won't build without buildx
+          - m17 # (deprecated)
+          - magicmini
+          - miyoomini # (deprecated)
+          - my282
+          - my355
+          - rg35xx # (deprecated)
+          - rg35xxplus
+          - rgb30 # (deprecated)
+          # - tg3040 now merged with tg5040, so we can't build it separately
+          - tg5040
+          - trimuismart # (deprecated)
+          - zero28
+    outputs:
+      filename: ${{ steps.binary.outputs.filename }}
 
     steps:
       - name: Checkout
@@ -31,48 +48,70 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Clone the union repository
-        run: git clone https://github.com/shauninman/union-${{ env.TOOLCHAIN_NAME }}-toolchain
+        run: git clone https://github.com/shauninman/union-${{ matrix.toolchain }}-toolchain
 
       - name: Move the codebase to the correct location
         run: |
-          mkdir -p union-${{ env.TOOLCHAIN_NAME }}-toolchain/workspace/repo
-          mv *.c Makefile union-${{ env.TOOLCHAIN_NAME }}-toolchain/workspace/repo
+          mkdir -p union-${{ matrix.toolchain }}-toolchain/workspace/repo
+          mv *.c Makefile union-${{ matrix.toolchain }}-toolchain/workspace/repo
 
       - name: Build the toolchain
         run: |
-          docker build -t ${{ env.TOOLCHAIN_NAME }}-toolchain .
+          docker build -t ${{ matrix.toolchain }}-toolchain .
           touch .build
-        working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
+        working-directory: union-${{ matrix.toolchain }}-toolchain
 
       - name: Build the application
         run: |
-          docker run -d -v "$(pwd)/workspace":/root/workspace ${{ env.TOOLCHAIN_NAME }}-toolchain tail -f /dev/null
-          container_id="$(docker container ls | grep tg5040-toolchain | awk '{print $1}')"
+          set -x
+          docker run -d -v "$(pwd)/workspace":/root/workspace ${{ matrix.toolchain }}-toolchain tail -f /dev/null
+          container_id="$(docker container ls | grep ${{ matrix.toolchain }}-toolchain | awk '{print $1}')"
           sleep 5
           docker container ls -a
-          docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --env PREFIX=/usr "$container_id" make -C /root/workspace/repo setup
-          docker exec --env CROSS_COMPILE=/usr/bin/aarch64-linux-gnu- --env PREFIX=/usr "$container_id" make -C /root/workspace/repo
+          echo "Container ID: $container_id"
+          docker exec --env PLATFORM=${{ matrix.toolchain }} "$container_id" bash -c "source /root/.bashrc && make -C /root/workspace/repo setup"
+          docker exec --env PLATFORM=${{ matrix.toolchain }} "$container_id" bash -c "source /root/.bashrc && make -C /root/workspace/repo"
           docker container rm -f "$container_id"
-        working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
+        working-directory: union-${{ matrix.toolchain }}-toolchain
 
       - name: Ensure the binary exists
         id: binary
         run: |
-          mkdir -p ../dist
-          cp "workspace/repo/$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')-${{ env.TOOLCHAIN_NAME }}" ../dist/
-          echo "filename=$(cat workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')" >> $GITHUB_OUTPUT
-        working-directory: union-${{ env.TOOLCHAIN_NAME }}-toolchain
+          filename="$(cat union-${{ matrix.toolchain }}-toolchain/workspace/repo/Makefile | grep ^TARGET | awk '{print $3}')-${{ matrix.toolchain }}"
+          cp "union-${{ matrix.toolchain }}-toolchain/workspace/repo/$filename" "$filename"
+          echo "filename=$filename" >> $GITHUB_OUTPUT
 
       - name: Attest Build Provenance
         uses: actions/attest-build-provenance@v2.1.0
         with:
-          subject-path: "dist/${{ steps.binary.outputs.filename }}-${{ env.TOOLCHAIN_NAME}}"
+          subject-path: "${{ steps.binary.outputs.filename }}"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/*
+          name: ${{ steps.binary.outputs.filename }}
+          path: ${{ steps.binary.outputs.filename }}
+
+  release:
+    name: release
+    runs-on: ubuntu-24.04-arm
+    needs: ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate Pattern
+        id: pattern
+        run: |
+          pattern="$(grep ^TARGET Makefile | awk '{print $3}')"
+          echo "pattern=$pattern" >> $GITHUB_OUTPUT
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: ${{ steps.pattern.outputs.pattern }}-*
+          merge-multiple: true
 
       - name: Release
         uses: softprops/action-gh-release@v2
