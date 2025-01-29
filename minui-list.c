@@ -5,8 +5,12 @@
 #include <stdbool.h>
 #include <msettings.h>
 #include <argp.h>
-#include <SDL2/SDL_ttf.h>
 #include <parson/parson.h>
+#if SDL == SDL2
+#include <SDL2/SDL_ttf.h>
+#else
+#include <SDL/SDL_ttf.h>
+#endif
 
 #include "defines.h"
 #include "api.h"
