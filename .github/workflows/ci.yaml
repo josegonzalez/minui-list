@@ -104,7 +104,7 @@ jobs:
       - name: Generate Pattern
         id: pattern
         run: |
-          pattern="$(grep ^TARGET Makefile | awk '{print $3}')
+          pattern="$(grep ^TARGET Makefile | awk '{print $3}')"
           echo "pattern=$pattern" >> $GITHUB_OUTPUT
 
       - name: Download Artifacts
