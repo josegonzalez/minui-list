@@ -26,6 +26,10 @@ all: minui $(PREFIX)/include/msettings.h include/parson
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) $(CC) $(SOURCE) -o $(PRODUCT)-$(PLATFORM) $(CFLAGS) $(FLAGS)
 
 setup: minui $(PREFIX)/include/msettings.h include/parson
+ifeq ($(PLATFORM),my282)
+	cd $(CURRENT_WORKING_DIR)/minui/workspace/$(PLATFORM)/libmstick && make
+	cp $(CURRENT_WORKING_DIR)/minui/workspace/$(PLATFORM)/libmstick/libmstick.so $(CURRENT_WORKING_DIR)/platform/$(PLATFORM)/lib/
+endif
 
 clean:
 	rm -rf $(PRODUCT)-$(PLATFORM)
