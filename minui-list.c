@@ -16,7 +16,7 @@
 #include "api.h"
 #include "utils.h"
 
-FILE *log_file = NULL;
+SDL_Surface *screen = NULL;
 
 // log_error logs a message to stderr for debugging purposes
 void log_error(const char *msg)
@@ -718,8 +718,10 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     return true;
 }
 
-// main is the entry point for the app
-int main(int argc, char *argv[])
+// init initializes the app state
+// everything is placed here as MinUI sometimes logs to stdout
+// and the logging happens depending on the platform
+void init()
 {
     // set the cpu speed to the menu speed
     // this is done here to ensure we downclock
@@ -731,10 +733,30 @@ int main(int argc, char *argv[])
     // - input from the pad/joystick/buttons/etc.
     // - power management
     // - sync hardware settings (brightness, hdmi, speaker, etc.)
-    SDL_Surface *screen = GFX_init(MODE_MAIN);
+    if (screen == NULL)
+    {
+        screen = GFX_init(MODE_MAIN);
+    }
     PAD_init();
     PWR_init();
-    swallow_stdout_from_function(InitSettings);
+    InitSettings();
+}
+
+// destruct cleans up the app state in reverse order
+void destruct()
+{
+    QuitSettings();
+    PWR_quit();
+    PAD_quit();
+    GFX_quit();
+}
+
+// main is the entry point for the app
+int main(int argc, char *argv[])
+{
+    // swallow all stdout from init calls
+    // MinUI will sometimes randomly log to stdout
+    swallow_stdout_from_function(init);
 
     signal(SIGINT, signal_handler);
 
@@ -840,16 +862,12 @@ int main(int argc, char *argv[])
         }
     }
 
-    // cleanup in reverse order
-    QuitSettings();
-    PWR_quit();
-    PAD_quit();
-    GFX_quit();
-
     if (state.exit_code == EXIT_SUCCESS)
     {
         log_info(state.list_state->items[state.list_state->selected].name);
     }
+
+    swallow_stdout_from_function(destruct);
 
     // exit the program
     return state.exit_code;
