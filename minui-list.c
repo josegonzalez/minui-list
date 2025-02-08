@@ -146,9 +146,15 @@ char *read_file(const char *filename)
 }
 
 // ListState_New creates a new ListState from a JSON file
-struct ListState *ListState_New(const char *filename, const char *format, const char *item_key)
+struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *title)
 {
     struct ListState *state = malloc(sizeof(struct ListState));
+
+    int max_row_count = MAIN_ROW_COUNT;
+    if (strlen(title) > 0)
+    {
+        max_row_count -= 1;
+    }
 
     if (strcmp(format, "text") == 0)
     {
@@ -199,7 +205,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         // Allocate array for items
         state->items = malloc(sizeof(struct ListItem) * item_count);
         state->item_count = item_count;
-        state->last_visible = (item_count < MAIN_ROW_COUNT) ? item_count : MAIN_ROW_COUNT;
+        state->last_visible = (item_count < max_row_count) ? item_count : max_row_count;
         state->first_visible = 0;
         state->selected = 0;
 
@@ -297,7 +303,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].name = name ? strdup(name) : "";
         }
     }
-    state->last_visible = (item_count < MAIN_ROW_COUNT) ? item_count : MAIN_ROW_COUNT;
+    state->last_visible = (item_count < max_row_count) ? item_count : max_row_count;
     state->first_visible = 0;
     state->selected = 0;
     state->item_count = item_count;
@@ -313,6 +319,13 @@ void handle_input(struct AppState *state)
     state->redraw = 0;
 
     PAD_poll();
+
+    // discount the title from the max row count
+    int max_row_count = MAIN_ROW_COUNT;
+    if (strlen(state->title) > 0)
+    {
+        max_row_count -= 1;
+    }
 
     bool is_cancel_button_pressed = false;
     if (strcmp(state->cancel_button, "A") == 0 && PAD_justReleased(BTN_A))
@@ -385,7 +398,7 @@ void handle_input(struct AppState *state)
             if (state->list_state->selected < 0)
             {
                 state->list_state->selected = state->list_state->item_count - 1;
-                int start = state->list_state->item_count - MAIN_ROW_COUNT;
+                int start = state->list_state->item_count - max_row_count;
                 state->list_state->first_visible = (start < 0) ? 0 : start;
                 state->list_state->last_visible = state->list_state->item_count;
             }
@@ -410,7 +423,7 @@ void handle_input(struct AppState *state)
             {
                 state->list_state->selected = 0;
                 state->list_state->first_visible = 0;
-                state->list_state->last_visible = (state->list_state->item_count < MAIN_ROW_COUNT) ? state->list_state->item_count : MAIN_ROW_COUNT;
+                state->list_state->last_visible = (state->list_state->item_count < max_row_count) ? state->list_state->item_count : max_row_count;
             }
             else if (state->list_state->selected >= state->list_state->last_visible)
             {
@@ -422,38 +435,38 @@ void handle_input(struct AppState *state)
     }
     if (PAD_justRepeated(BTN_LEFT))
     {
-        state->list_state->selected -= MAIN_ROW_COUNT;
+        state->list_state->selected -= max_row_count;
         if (state->list_state->selected < 0)
         {
             state->list_state->selected = 0;
             state->list_state->first_visible = 0;
-            state->list_state->last_visible = (state->list_state->item_count < MAIN_ROW_COUNT) ? state->list_state->item_count : MAIN_ROW_COUNT;
+            state->list_state->last_visible = (state->list_state->item_count < max_row_count) ? state->list_state->item_count : max_row_count;
         }
         else if (state->list_state->selected < state->list_state->first_visible)
         {
-            state->list_state->first_visible -= MAIN_ROW_COUNT;
+            state->list_state->first_visible -= max_row_count;
             if (state->list_state->first_visible < 0)
                 state->list_state->first_visible = 0;
-            state->list_state->last_visible = state->list_state->first_visible + MAIN_ROW_COUNT;
+            state->list_state->last_visible = state->list_state->first_visible + max_row_count;
         }
         state->redraw = 1;
     }
     else if (PAD_justRepeated(BTN_RIGHT))
     {
-        state->list_state->selected += MAIN_ROW_COUNT;
+        state->list_state->selected += max_row_count;
         if (state->list_state->selected >= state->list_state->item_count)
         {
             state->list_state->selected = state->list_state->item_count - 1;
-            int start = state->list_state->item_count - MAIN_ROW_COUNT;
+            int start = state->list_state->item_count - max_row_count;
             state->list_state->first_visible = (start < 0) ? 0 : start;
             state->list_state->last_visible = state->list_state->item_count;
         }
         else if (state->list_state->selected >= state->list_state->last_visible)
         {
-            state->list_state->last_visible += MAIN_ROW_COUNT;
+            state->list_state->last_visible += max_row_count;
             if (state->list_state->last_visible > state->list_state->item_count)
                 state->list_state->last_visible = state->list_state->item_count;
-            state->list_state->first_visible = state->list_state->last_visible - MAIN_ROW_COUNT;
+            state->list_state->first_visible = state->list_state->last_visible - max_row_count;
         }
         state->redraw = 1;
     }
@@ -789,7 +802,7 @@ int main(int argc, char *argv[])
     // parse the arguments
     parse_arguments(&state, argc, argv);
 
-    state.list_state = ListState_New(state.file, state.format, state.item_key);
+    state.list_state = ListState_New(state.file, state.format, state.item_key, state.title);
     if (state.list_state == NULL)
     {
         log_error("Failed to create list state");
