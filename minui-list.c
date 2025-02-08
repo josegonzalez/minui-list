@@ -484,8 +484,8 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     if (strlen(state->title) > 0)
     {
         // draw the title
-        SDL_Color text_color = COLOR_WHITE;
-        SDL_Surface *text = TTF_RenderUTF8_Blended(font.large, state->title, text_color);
+        SDL_Color text_color = COLOR_GRAY;
+        SDL_Surface *text = TTF_RenderUTF8_Blended(font.medium, state->title, text_color);
         SDL_Rect pos = {
             SCALE1(PADDING + BUTTON_PADDING),
             SCALE1(PADDING + 4),
