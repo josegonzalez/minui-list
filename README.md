@@ -1,6 +1,6 @@
 # minui list
 
-This is a minui list app. It allows people to show a list of items and then writes the selected item to stdout.
+This is a minui list app. It allows people to show a list of items or settings and then writes the selected item or state to stdout.
 
 ## Requirements
 
@@ -46,7 +46,7 @@ output=$(minui-list --file list.json)
 minui-list --file list.json --header "Some Header"
 
 # specify alternative text for the Confirm button
-# by default, the Confirm button is "SELECT"
+# by default, the Confirm button text is "SELECT"
 minui-list --file list.json --confirm-text "CHOOSE"
 
 # specify an alternative button for the Confirm button
@@ -55,13 +55,32 @@ minui-list --file list.json --confirm-text "CHOOSE"
 minui-list --file list.json --confirm-button "X"
 
 # specify alternative text for the Cancel button
-# by default, the Cancel button is "BACK"
+# by default, the Cancel button text is "BACK"
 minui-list --file list.json --cancel-text "CANCEL"
 
 # specify an alternative button for the Cancel button
 # by default, the Cancel button is "B"
 # the only buttons supported are "A", "B", "X", and "Y"
 minui-list --file list.json --cancel-button "Y"
+
+# specify a button for the Action Button
+# by default, there is no action button
+# when set, the default Action button text is "ACTION"
+# the only buttons supported are "A", "B", "X", and "Y"
+minui-list --file list.json --action-button "X" --action-text "RESUME"
+
+# specify an alternative button for the Enable Button
+# by default, the Cancel button is "Y"
+# the button text is either "Enable" or "Disable"
+# the only buttons supported are "A", "B", "X", and "Y"
+minui-list --file list.json --enable-button "Y"
+
+# write the current json state to stdout
+# this will _always_ write the current state to stdout
+# regardless of exit code
+# the index of the selected item will be written
+# to the top-level `selected` property
+minui-list --file list.json --stdout-value state
 ```
 
 To create a list of items from newline-delimited strings, you can use jq:
@@ -81,12 +100,69 @@ done < items.txt | sed '$ s/,$//' >> list.json
 printf ']\n' >> list.json
 ```
 
+### File Formats
+
+#### Text
+
+A newline-delimited file.
+
+```text
+item 1
+item 2
+item 3
+```
+
+#### JSON
+
+##### Array
+
+A json array. May or may not be formatted.
+
+```json
+[
+  "item 1",
+  "item 2",
+  "item 3"
+]
+```
+
+##### Object
+
+A list of objects set at a particular key. May or may not be formatted.
+
+```json
+{
+  "items": [
+    {
+      "name": "item 1"
+    },
+    {
+      "name": "item 2"
+    },
+    {
+      "name": "item 3"
+    }
+  ]
+}
+```
+
+Properties:
+
+- name: (required, type: `string`) the option name
+- enabled: (optional, type: `boolean`, default: `true`) whether the field shows up as enabled or disabled
+- options: (optional, type: `[]string`, default: `[]`) a list of strings to display as options
+- selected_option: (optional, type: `integer`, default: `0`) the default selected option
+- supports_enabling: (optional, type: `boolean`, default: `false`) whether or not an option can be enabled or disabled
+
 ### Exit Codes
 
 - 0: Success (the user selected an item)
 - 1: Error
 - 2: User cancelled with B button
 - 3: User cancelled with Menu button
+- 4: User pressed Action button
+- 10: Error parsing input
+- 11: Error serializing output
 - 130: Ctrl+C
 
 ## Screenshots
