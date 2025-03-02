@@ -947,7 +947,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             // get the hex color from the options array
             char *hex_color = state->list_state->items[i].options[state->list_state->items[i].selected_option];
             SDL_Color current_color = hex_to_sdl_color(hex_color);
-            uint32_t color = SDL_MapRGBA(screen->format, current_color.r, current_color.g, current_color.b, current_color.a);
+            uint32_t color = SDL_MapRGBA(screen->format, current_color.r, current_color.g, current_color.b, 255);
 
             // Draw outline cube
             uint32_t outline_color = sdl_color_to_uint32(text_color);
