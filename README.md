@@ -114,6 +114,9 @@ item 3
 
 #### JSON
 
+> [!NOTE]
+> If an item is detected as a hex color, a small box showing that color will be shown to the right of the item entry in the list.
+
 ##### Array
 
 A json array. May or may not be formatted.
