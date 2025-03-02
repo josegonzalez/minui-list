@@ -788,6 +788,53 @@ void handle_input(struct AppState *state)
     }
 }
 
+// detects if a string is a hex color
+bool detect_hex_color(const char *hex)
+{
+    if (hex[0] != '#')
+    {
+        return false;
+    }
+
+    hex++;
+    int r, g, b;
+    if (sscanf(hex, "%02x%02x%02x", &r, &g, &b) == 3)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+// turns a hex color (e.g. #000000) into an SDL_Color
+SDL_Color hex_to_sdl_color(const char *hex)
+{
+    SDL_Color color = {0, 0, 0, 255};
+
+    // Skip # if present
+    if (hex[0] == '#')
+    {
+        hex++;
+    }
+
+    // Parse RGB values from hex string
+    int r, g, b;
+    if (sscanf(hex, "%02x%02x%02x", &r, &g, &b) == 3)
+    {
+        color.r = r;
+        color.g = g;
+        color.b = b;
+    }
+
+    return color;
+}
+
+// turns an SDL_Color into a uint32_t
+uint32_t sdl_color_to_uint32(SDL_Color color)
+{
+    return (uint32_t)((color.r << 16) + (color.g << 8) + (color.b << 0));
+}
+
 // draw_screen interprets the app state and draws it to the screen
 void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
 {
@@ -831,9 +878,12 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         // if there are no options, the output should be:
         // item.name
         char display_text[256];
+        bool is_hex_color = false;
         if (state->list_state->items[i].option_count > 0 && !state->list_state->items[i].is_header)
         {
-            snprintf(display_text, sizeof(display_text), "%s: %s", state->list_state->items[i].name, state->list_state->items[i].options[state->list_state->items[i].selected_option]);
+            char *selected_option = state->list_state->items[i].options[state->list_state->items[i].selected_option];
+            snprintf(display_text, sizeof(display_text), "%s: %s", state->list_state->items[i].name, selected_option);
+            is_hex_color = detect_hex_color(selected_option);
         }
         else
         {
@@ -850,12 +900,14 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             text_color = COLOR_LIGHT_TEXT;
         }
 
+        int color_placeholder_height;
+        TTF_SizeUTF8(font.medium, " ", NULL, &color_placeholder_height);
+
         char truncated_display_text[256];
         int text_width = GFX_truncateText(font.large, display_text, truncated_display_text, available_width, SCALE1(BUTTON_PADDING * 2));
         int max_width = MIN(available_width, text_width);
         if (j == selected_row)
         {
-            GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){SCALE1(PADDING), SCALE1(PADDING + ((j + has_top_margin) * PILL_SIZE)), max_width, SCALE1(PILL_SIZE)});
             text_color = COLOR_BLACK;
             current_item_is_enabled = state->list_state->items[i].enabled;
             if (!state->list_state->items[i].enabled)
@@ -871,6 +923,12 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
                 current_item_is_header = true;
                 text_color = COLOR_LIGHT_TEXT;
             }
+            if (is_hex_color)
+            {
+                max_width += color_placeholder_height + SCALE1(PADDING);
+            }
+
+            GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){SCALE1(PADDING), SCALE1(PADDING + ((j + has_top_margin) * PILL_SIZE)), max_width, SCALE1(PILL_SIZE)});
         }
 
         SDL_Surface *text;
@@ -883,6 +941,29 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             text->h};
         SDL_BlitSurface(text, NULL, screen, &pos);
         SDL_FreeSurface(text);
+
+        if (is_hex_color)
+        {
+            // get the hex color from the options array
+            char *hex_color = state->list_state->items[i].options[state->list_state->items[i].selected_option];
+            SDL_Color current_color = hex_to_sdl_color(hex_color);
+            uint32_t color = SDL_MapRGBA(screen->format, current_color.r, current_color.g, current_color.b, 255);
+
+            // Draw outline cube
+            uint32_t outline_color = sdl_color_to_uint32(text_color);
+            SDL_Rect outline_rect = {
+                SCALE1(PADDING + BUTTON_PADDING) + text->w + SCALE1(PADDING),
+                SCALE1(PADDING + ((i - state->list_state->first_visible + has_top_margin) * PILL_SIZE) + 5), color_placeholder_height,
+                color_placeholder_height};
+            SDL_FillRect(screen, &(SDL_Rect){outline_rect.x, outline_rect.y, outline_rect.w, outline_rect.h}, outline_color);
+
+            // Draw color cube
+            SDL_Rect color_rect = {
+                SCALE1(PADDING + BUTTON_PADDING) + text->w + SCALE1(PADDING) + 2,
+                SCALE1(PADDING + ((i - state->list_state->first_visible + has_top_margin) * PILL_SIZE) + 5) + 2, color_placeholder_height - 4,
+                color_placeholder_height - 4};
+            SDL_FillRect(screen, &(SDL_Rect){color_rect.x, color_rect.y, color_rect.w, color_rect.h}, color);
+        }
     }
 
     char enable_button_text[256] = "Enable";
