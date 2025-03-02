@@ -131,7 +131,7 @@ A json array. May or may not be formatted.
 
 ##### Object
 
-A list of objects set at a particular key. May or may not be formatted.
+A list of objects set at a particular key. May or may not be formatted. Comments are allowed.
 
 ```json
 {
