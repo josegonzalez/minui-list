@@ -4,7 +4,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <msettings.h>
-#include <argp.h>
+#include <getopt.h>
 #include <parson/parson.h>
 #ifdef USE_SDL2
 #include <SDL2/SDL_ttf.h>
@@ -561,7 +561,7 @@ void signal_handler(int signal)
     }
 }
 
-// parse_arguments parses the arguments using argp and updates the app state
+// parse_arguments parses the arguments using getopt and updates the app state
 // supports the following flags:
 // - --confirm-button <button> (default: "A")
 // - --confirm-text <text> (default: "SELECT")
@@ -573,111 +573,52 @@ void signal_handler(int signal)
 // - --item-key <key> (default: "items")
 bool parse_arguments(struct AppState *state, int argc, char *argv[])
 {
-    struct argp_option options[] = {
-        {"confirm-button", 'b', "BUTTON", 0, "Button to display on the Confirm button", 0},
-        {"confirm-text", 'c', "TEXT", 0, "Text to display on the Confirm button", 0},
-        {"cancel-button", 'B', "BUTTON", 0, "Button to display on the Cancel button", 0},
-        {"cancel-text", 'C', "TEXT", 0, "Text to display on the Cancel button", 0},
-        {"file", 'f', "FILE", 0, "Path to the JSON file", 0},
-        {"format", 'F', "FORMAT", 0, "Format to read the input from", 0},
-        {"item-key", 'i', "KEY", 0, "Key to the items array in the JSON file", 0},
-        {"header", 'H', "TITLE", 0, "Title to display at the top of the screen", 0},
-        {0}};
+    static struct option long_options[] = {
+        {"confirm-button", required_argument, 0, 'b'},
+        {"confirm-text", required_argument, 0, 'c'},
+        {"cancel-button", required_argument, 0, 'B'},
+        {"cancel-text", required_argument, 0, 'C'},
+        {"file", required_argument, 0, 'f'},
+        {"format", required_argument, 0, 'F'},
+        {"item-key", required_argument, 0, 'i'},
+        {"header", required_argument, 0, 'H'},
+        {0, 0, 0, 0}};
 
-    struct arguments
+    int opt;
+    while ((opt = getopt_long(argc, argv, "b:c:B:C:f:F:i:H:", long_options, NULL)) != -1)
     {
-        char *cancel_button;
-        char *cancel_text;
-        char *confirm_button;
-        char *confirm_text;
-        char *file;
-        char *format;
-        char *header;
-        char *item_key;
-    };
-
-    error_t parse_opt(int key, char *arg, struct argp_state *argp_state)
-    {
-        struct arguments *arguments = argp_state->input;
-
-        switch (key)
+        switch (opt)
         {
         case 'b':
-            arguments->confirm_button = arg;
+            strncpy(state->confirm_button, optarg, sizeof(state->confirm_button) - 1);
             break;
         case 'B':
-            arguments->cancel_button = arg;
+            strncpy(state->cancel_button, optarg, sizeof(state->cancel_button) - 1);
             break;
         case 'c':
-            arguments->confirm_text = arg;
+            strncpy(state->confirm_text, optarg, sizeof(state->confirm_text) - 1);
             break;
         case 'C':
-            arguments->cancel_text = arg;
+            strncpy(state->cancel_text, optarg, sizeof(state->cancel_text) - 1);
             break;
         case 'f':
-            arguments->file = arg;
+            strncpy(state->file, optarg, sizeof(state->file) - 1);
             break;
         case 'F':
-            arguments->format = arg;
+            strncpy(state->format, optarg, sizeof(state->format) - 1);
             break;
         case 'i':
-            arguments->item_key = arg;
+            strncpy(state->item_key, optarg, sizeof(state->item_key) - 1);
             break;
         case 'H':
-            arguments->header = arg;
+            strncpy(state->title, optarg, sizeof(state->title) - 1);
             break;
         default:
-            return ARGP_ERR_UNKNOWN;
+            return false;
         }
-        return 0;
     }
-
-    struct argp argp = {options, parse_opt, 0, 0};
-
-    struct arguments arguments = {0};
-    argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
     // Apply parsed arguments to state
-    if (arguments.confirm_button)
-    {
-        strncpy(state->confirm_button, arguments.confirm_button, sizeof(state->confirm_button) - 1);
-    }
-
-    if (arguments.cancel_button)
-    {
-        strncpy(state->cancel_button, arguments.cancel_button, sizeof(state->cancel_button) - 1);
-    }
-
-    if (arguments.confirm_text)
-    {
-        strncpy(state->confirm_text, arguments.confirm_text, sizeof(state->confirm_text) - 1);
-    }
-
-    if (arguments.cancel_text)
-    {
-        strncpy(state->cancel_text, arguments.cancel_text, sizeof(state->cancel_text) - 1);
-    }
-
-    if (arguments.file)
-    {
-        strncpy(state->file, arguments.file, sizeof(state->file) - 1);
-    }
-
-    if (arguments.format)
-    {
-        strncpy(state->format, arguments.format, sizeof(state->format) - 1);
-    }
-
-    if (arguments.header)
-    {
-        strncpy(state->title, arguments.header, sizeof(state->title) - 1);
-    }
-
-    if (arguments.item_key)
-    {
-        strncpy(state->item_key, arguments.item_key, sizeof(state->item_key) - 1);
-    }
-
     if (strcmp(state->confirm_button, "") == 0)
     {
         strncpy(state->confirm_button, "A", sizeof(state->confirm_button) - 1);
