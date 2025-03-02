@@ -18,6 +18,19 @@
 
 SDL_Surface *screen = NULL;
 
+enum list_result_t
+{
+    ExitCodeSuccess = 0,
+    ExitCodeError = 1,
+    ExitCodeCancelButton = 2,
+    ExitCodeMenuButton = 3,
+    ExitCodeActionButton = 4,
+    ExitCodeParseError = 10,
+    ExitCodeSerializeError = 11,
+    ExitCodeKeyboardInterrupt = 130,
+};
+typedef int ExitCode;
+
 // log_error logs a message to stderr for debugging purposes
 void log_error(const char *msg)
 {
@@ -37,36 +50,84 @@ void log_info(const char *msg)
 // ListItem holds the configuration for a list item
 struct ListItem
 {
+    // the name of the item
     char *name;
+    // a list of char options for the item
+    char **options;
+    // whether the item has options field
+    bool has_options;
+    // the number of options for the item
+    int option_count;
+    // whether the item has a supports_enabling field
+    bool has_supports_enabling;
+    // whether the option supports enabling
+    bool supports_enabling;
+    // whether the item has an enabled field
+    bool has_enabled;
+    // whether the item is enabled
+    bool enabled;
+    // whether the item has a selected_option field
+    bool has_selected_option;
+    // the selected option index
+    int selected_option;
 };
 
 // ListState holds the state of the list
 struct ListState
 {
-    struct ListItem *items; // array of list items
-    size_t item_count;      // number of items in the list
-    // rendering
-    int first_visible; // index of first visible item
-    int last_visible;  // index of last visible item
-    int selected;      // index of currently selected item
+    // array of list items
+    struct ListItem *items;
+    // number of items in the list
+    size_t item_count;
+    // rendering state
+    // index of first visible item
+    int first_visible;
+    // index of last visible item
+    int last_visible;
+    // index of currently selected item
+    int selected;
+
+    // whether or not any items in the list have options
+    bool has_options;
 };
 
 // AppState holds the current state of the application
 struct AppState
 {
-    int exit_code;                // the exit code to return
-    int quitting;                 // whether the app should exit
-    int redraw;                   // whether the screen needs to be redrawn
-    int show_brightness_setting;  // whether to show the brightness or hardware state
-    char confirm_button[1024];    // the button to display on the Confirm button
-    char confirm_text[1024];      // the text to display on the Confirm button
-    char cancel_button[1024];     // the button to display on the Cancel button
-    char cancel_text[1024];       // the text to display on the Cancel button
-    char file[1024];              // the path to the JSON file
-    char format[1024];            // the format to read the input from
-    char item_key[1024];          // the key to the items array in the JSON file
-    char title[1024];             // the title of the list page
-    struct ListState *list_state; // the state of the list
+    // the exit code to return
+    int exit_code;
+    // whether the app should exit
+    int quitting;
+    // whether the screen needs to be redrawn
+    int redraw;
+    // whether to show the brightness or hardware state
+    int show_brightness_setting;
+    // the button to display on the Action button
+    char action_button[1024];
+    // the text to display on the Action button
+    char action_text[1024];
+    // the button to display on the Confirm button
+    char confirm_button[1024];
+    // the text to display on the Confirm button
+    char confirm_text[1024];
+    // the button to display on the Cancel button
+    char cancel_button[1024];
+    // the text to display on the Cancel button
+    char cancel_text[1024];
+    // the button to display on the Enable button
+    char enable_button[1024];
+    // the path to the JSON file
+    char file[1024];
+    // the format to read the input from
+    char format[1024];
+    // the key to the items array in the JSON file
+    char item_key[1024];
+    // the value to write to stdout (selected, state)
+    char stdout_value[1024];
+    // the title of the list page
+    char title[1024];
+    // the state of the list
+    struct ListState *list_state;
 };
 
 char *read_stdin()
@@ -284,6 +345,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
     size_t item_count = json_array_get_count(items_array);
 
     state->items = malloc(sizeof(struct ListItem) * item_count);
+    state->has_options = false;
 
     if (strlen(item_key) == 0)
     {
@@ -291,6 +353,17 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         {
             const char *name = json_array_get_string(items_array, i);
             state->items[i].name = name ? strdup(name) : "";
+
+            // set defaults for the other fields
+            state->items[i].options = NULL;
+            state->items[i].option_count = 0;
+            state->items[i].supports_enabling = false;
+            state->items[i].enabled = true;
+            state->items[i].selected_option = 0;
+            state->items[i].has_options = false;
+            state->items[i].has_supports_enabling = false;
+            state->items[i].has_enabled = false;
+            state->items[i].has_selected_option = false;
         }
     }
     else
@@ -301,6 +374,108 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
 
             const char *name = json_object_get_string(item, "name");
             state->items[i].name = name ? strdup(name) : "";
+
+            // read in the options from the json object
+            // if there are no options, set the options to an empty array
+            // if there are options, treat them as a list of strings
+            JSON_Array *options_array = json_object_get_array(item, "options");
+            size_t options_count = json_array_get_count(options_array);
+            state->items[i].options = malloc(sizeof(char *) * options_count);
+            state->items[i].option_count = options_count;
+            for (size_t j = 0; j < options_count; j++)
+            {
+                const char *option = json_array_get_string(options_array, j);
+                state->items[i].options[j] = option ? strdup(option) : "";
+            }
+
+            if (options_count > 0)
+            {
+                state->has_options = true;
+            }
+            if (json_object_has_value(item, "selected_option"))
+            {
+                state->items[i].has_selected_option = true;
+            }
+            else
+            {
+                state->items[i].has_selected_option = false;
+            }
+
+            // read in the current option index from the json object
+            // if there is no current option index, set it to 0
+            // if there is a current option index, treat it as an integer
+            if (json_object_has_value(item, "selected_option"))
+            {
+                state->items[i].selected_option = json_object_get_number(item, "selected_option");
+                if (state->items[i].selected_option < 0)
+                {
+                    char error_message[256];
+                    snprintf(error_message, sizeof(error_message), "Item %s has a selected option index of %d, which is less than 0. Setting to 0.", state->items[i].name, state->items[i].selected_option);
+                    log_error(error_message);
+                    state->items[i].selected_option = 0;
+                }
+                if (state->items[i].selected_option >= options_count)
+                {
+                    char error_message[256];
+                    snprintf(error_message, sizeof(error_message), "Item %s has a selected option index of %d, which is greater than the number of options %d. Setting to last option.", state->items[i].name, state->items[i].selected_option, options_count);
+                    log_error(error_message);
+                    state->items[i].selected_option = options_count - 1;
+                    if (state->items[i].selected_option < 0)
+                    {
+                        state->items[i].selected_option = 0;
+                    }
+                }
+                state->items[i].has_selected_option = true;
+            }
+            else
+            {
+                state->items[i].selected_option = 0;
+                state->items[i].has_selected_option = false;
+            }
+
+            // read in the supports_enabling from the json object
+            // if there is no supports_enabling, set it to false
+            // if there is a supports_enabling, treat it as a boolean
+            if (json_object_get_boolean(item, "supports_enabling") == 1)
+            {
+                state->items[i].supports_enabling = true;
+                state->items[i].has_supports_enabling = true;
+            }
+            else if (json_object_get_boolean(item, "supports_enabling") == 0)
+            {
+                state->items[i].supports_enabling = false;
+                state->items[i].has_supports_enabling = true;
+            }
+            else
+            {
+                state->items[i].supports_enabling = false;
+                state->items[i].has_supports_enabling = false;
+            }
+
+            // read in the enabled from the json object
+            // if there is no enabled, set it to true
+            // if there is an enabled, treat it as a boolean
+            if (json_object_get_boolean(item, "enabled") == 1)
+            {
+                state->items[i].enabled = true;
+                state->items[i].has_enabled = true;
+            }
+            else if (json_object_get_boolean(item, "enabled") == 0)
+            {
+                state->items[i].enabled = false;
+                state->items[i].has_enabled = true;
+                if (!state->items[i].supports_enabling)
+                {
+                    char error_message[256];
+                    snprintf(error_message, sizeof(error_message), "Item %s has no supports_enabling, but is disabled", state->items[i].name);
+                    log_error(error_message);
+                }
+            }
+            else
+            {
+                state->items[i].enabled = true;
+                state->items[i].has_enabled = false;
+            }
         }
     }
     state->last_visible = (item_count < max_row_count) ? item_count : max_row_count;
@@ -327,62 +502,127 @@ void handle_input(struct AppState *state)
         max_row_count -= 1;
     }
 
+    bool is_action_button_pressed = false;
     bool is_cancel_button_pressed = false;
-    if (strcmp(state->cancel_button, "A") == 0 && PAD_justReleased(BTN_A))
+    bool is_confirm_button_pressed = false;
+    bool is_enable_button_pressed = false;
+    if (PAD_justReleased(BTN_A))
     {
-        is_cancel_button_pressed = true;
+        if (strcmp(state->action_button, "A") == 0)
+        {
+            is_action_button_pressed = true;
+        }
+        else if (strcmp(state->confirm_button, "A") == 0)
+        {
+            is_confirm_button_pressed = true;
+        }
+        else if (strcmp(state->cancel_button, "A") == 0)
+        {
+            is_cancel_button_pressed = true;
+        }
+        else if (strcmp(state->enable_button, "A") == 0)
+        {
+            is_enable_button_pressed = true;
+        }
     }
-    else if (strcmp(state->cancel_button, "B") == 0 && PAD_justReleased(BTN_B))
+    else if (PAD_justReleased(BTN_B))
     {
-        is_cancel_button_pressed = true;
+        if (strcmp(state->action_button, "B") == 0)
+        {
+            is_action_button_pressed = true;
+        }
+        else if (strcmp(state->cancel_button, "B") == 0)
+        {
+            is_cancel_button_pressed = true;
+        }
+        else if (strcmp(state->confirm_button, "B") == 0)
+        {
+            is_confirm_button_pressed = true;
+        }
+        else if (strcmp(state->enable_button, "B") == 0)
+        {
+            is_enable_button_pressed = true;
+        }
     }
-    else if (strcmp(state->cancel_button, "X") == 0 && PAD_justReleased(BTN_X))
+    else if (PAD_justReleased(BTN_X))
     {
-        is_cancel_button_pressed = true;
+        if (strcmp(state->action_button, "X") == 0)
+        {
+            is_action_button_pressed = true;
+        }
+        else if (strcmp(state->cancel_button, "X") == 0)
+        {
+            is_cancel_button_pressed = true;
+        }
+        else if (strcmp(state->confirm_button, "X") == 0)
+        {
+            is_confirm_button_pressed = true;
+        }
+        else if (strcmp(state->enable_button, "X") == 0)
+        {
+            is_enable_button_pressed = true;
+        }
     }
-    else if (strcmp(state->cancel_button, "Y") == 0 && PAD_justReleased(BTN_Y))
+    else if (PAD_justReleased(BTN_Y))
     {
-        is_cancel_button_pressed = true;
+        if (strcmp(state->action_button, "Y") == 0)
+        {
+            is_action_button_pressed = true;
+        }
+        else if (strcmp(state->cancel_button, "Y") == 0)
+        {
+            is_cancel_button_pressed = true;
+        }
+        else if (strcmp(state->confirm_button, "Y") == 0)
+        {
+            is_confirm_button_pressed = true;
+        }
+        else if (strcmp(state->enable_button, "Y") == 0)
+        {
+            is_enable_button_pressed = true;
+        }
     }
 
-    if (is_cancel_button_pressed || PAD_justReleased(BTN_MENU))
+    if (is_action_button_pressed)
     {
         state->redraw = 0;
         state->quitting = 1;
-        if (is_cancel_button_pressed)
-        {
-            state->exit_code = 2;
-        }
-        else
-        {
-            state->exit_code = 3;
-        }
+        state->exit_code = ExitCodeActionButton;
         return;
     }
 
-    bool is_confirm_button_pressed = false;
-    if (strcmp(state->confirm_button, "A") == 0 && PAD_justReleased(BTN_A))
+    if (is_cancel_button_pressed)
     {
-        is_confirm_button_pressed = true;
-    }
-    else if (strcmp(state->confirm_button, "B") == 0 && PAD_justReleased(BTN_B))
-    {
-        is_confirm_button_pressed = true;
-    }
-    else if (strcmp(state->confirm_button, "X") == 0 && PAD_justReleased(BTN_X))
-    {
-        is_confirm_button_pressed = true;
-    }
-    else if (strcmp(state->confirm_button, "Y") == 0 && PAD_justReleased(BTN_Y))
-    {
-        is_confirm_button_pressed = true;
+        state->redraw = 0;
+        state->quitting = 1;
+        state->exit_code = ExitCodeCancelButton;
+        return;
     }
 
     if (is_confirm_button_pressed)
     {
         state->redraw = 0;
         state->quitting = 1;
-        state->exit_code = EXIT_SUCCESS;
+        state->exit_code = ExitCodeSuccess;
+        return;
+    }
+
+    // if the enable button is pressed, toggle the enabled state of the currently selected item
+    if (is_enable_button_pressed)
+    {
+        if (state->list_state->items[state->list_state->selected].supports_enabling)
+        {
+            state->redraw = 1;
+            state->list_state->items[state->list_state->selected].enabled = !state->list_state->items[state->list_state->selected].enabled;
+        }
+        return;
+    }
+
+    if (PAD_justReleased(BTN_MENU))
+    {
+        state->redraw = 0;
+        state->quitting = 1;
+        state->exit_code = ExitCodeMenuButton;
         return;
     }
 
@@ -433,40 +673,70 @@ void handle_input(struct AppState *state)
             state->redraw = 1;
         }
     }
-    if (PAD_justRepeated(BTN_LEFT))
+    else if (PAD_justRepeated(BTN_LEFT))
     {
-        state->list_state->selected -= max_row_count;
-        if (state->list_state->selected < 0)
+        // if the state has options, cycle through the options
+        if (state->list_state->has_options)
         {
-            state->list_state->selected = 0;
-            state->list_state->first_visible = 0;
-            state->list_state->last_visible = (state->list_state->item_count < max_row_count) ? state->list_state->item_count : max_row_count;
+            if (state->list_state->items[state->list_state->selected].enabled)
+            {
+                state->list_state->items[state->list_state->selected].selected_option -= 1;
+                if (state->list_state->items[state->list_state->selected].selected_option < 0)
+                {
+                    state->list_state->items[state->list_state->selected].selected_option = state->list_state->items[state->list_state->selected].option_count - 1;
+                }
+            }
         }
-        else if (state->list_state->selected < state->list_state->first_visible)
+        else
         {
-            state->list_state->first_visible -= max_row_count;
-            if (state->list_state->first_visible < 0)
+            state->list_state->selected -= max_row_count;
+            if (state->list_state->selected < 0)
+            {
+                state->list_state->selected = 0;
                 state->list_state->first_visible = 0;
-            state->list_state->last_visible = state->list_state->first_visible + max_row_count;
+                state->list_state->last_visible = (state->list_state->item_count < max_row_count) ? state->list_state->item_count : max_row_count;
+            }
+            else if (state->list_state->selected < state->list_state->first_visible)
+            {
+                state->list_state->first_visible -= max_row_count;
+                if (state->list_state->first_visible < 0)
+                    state->list_state->first_visible = 0;
+                state->list_state->last_visible = state->list_state->first_visible + max_row_count;
+            }
         }
         state->redraw = 1;
     }
     else if (PAD_justRepeated(BTN_RIGHT))
     {
-        state->list_state->selected += max_row_count;
-        if (state->list_state->selected >= state->list_state->item_count)
+        // if the state has options, cycle through the options
+        if (state->list_state->has_options)
         {
-            state->list_state->selected = state->list_state->item_count - 1;
-            int start = state->list_state->item_count - max_row_count;
-            state->list_state->first_visible = (start < 0) ? 0 : start;
-            state->list_state->last_visible = state->list_state->item_count;
+            if (state->list_state->items[state->list_state->selected].enabled)
+            {
+                state->list_state->items[state->list_state->selected].selected_option += 1;
+                if (state->list_state->items[state->list_state->selected].selected_option >= state->list_state->items[state->list_state->selected].option_count)
+                {
+                    state->list_state->items[state->list_state->selected].selected_option = 0;
+                }
+            }
         }
-        else if (state->list_state->selected >= state->list_state->last_visible)
+        else
         {
-            state->list_state->last_visible += max_row_count;
-            if (state->list_state->last_visible > state->list_state->item_count)
+            state->list_state->selected += max_row_count;
+            if (state->list_state->selected >= state->list_state->item_count)
+            {
+                state->list_state->selected = state->list_state->item_count - 1;
+                int start = state->list_state->item_count - max_row_count;
+                state->list_state->first_visible = (start < 0) ? 0 : start;
                 state->list_state->last_visible = state->list_state->item_count;
-            state->list_state->first_visible = state->list_state->last_visible - max_row_count;
+            }
+            else if (state->list_state->selected >= state->list_state->last_visible)
+            {
+                state->list_state->last_visible += max_row_count;
+                if (state->list_state->last_visible > state->list_state->item_count)
+                    state->list_state->last_visible = state->list_state->item_count;
+                state->list_state->first_visible = state->list_state->last_visible - max_row_count;
+            }
         }
         state->redraw = 1;
     }
@@ -475,7 +745,7 @@ void handle_input(struct AppState *state)
 // draw_screen interprets the app state and draws it to the screen
 void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
 {
-    // draw the button group on the button-right
+    // draw the button group on the right
     // only two buttons can be displayed at a time
     GFX_blitButtonGroup((char *[]){state->cancel_button, state->cancel_text, state->confirm_button, state->confirm_text, NULL}, 1, screen, 1);
 
@@ -497,6 +767,9 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     }
 
     // the rest of the function is just for drawing your app to the screen
+    bool current_item_supports_enabling = false;
+    char current_item_text[256] = "";
+    bool current_item_is_enabled = false;
     int selected_row = state->list_state->selected - state->list_state->first_visible;
     for (int i = state->list_state->first_visible, j = 0; i < state->list_state->last_visible; i++, j++)
     {
@@ -505,17 +778,49 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         {
             available_width -= ow;
         }
+        // compute the string representation of the current item
+        // to include the current option if there are any options
+        // the output should be in the format of:
+        // item.name: <selected_option>
+        // if there are no options, the output should be:
+        // item.name
+        char display_text[256];
+        if (state->list_state->items[i].option_count > 0)
+        {
+            snprintf(display_text, sizeof(display_text), "%s: %s", state->list_state->items[i].name, state->list_state->items[i].options[state->list_state->items[i].selected_option]);
+        }
+        else
+        {
+            snprintf(display_text, sizeof(display_text), "%s", state->list_state->items[i].name);
+        }
 
         SDL_Color text_color = COLOR_WHITE;
-        char display_name[256];
-        int text_width = GFX_truncateText(font.large, state->list_state->items[i].name, display_name, available_width, SCALE1(BUTTON_PADDING * 2));
+        if (!state->list_state->items[i].enabled)
+        {
+            text_color = (SDL_Color){TRIAD_DARK_GRAY};
+        }
+
+        char truncated_display_text[256];
+        int text_width = GFX_truncateText(font.large, display_text, truncated_display_text, available_width, SCALE1(BUTTON_PADDING * 2));
         int max_width = MIN(available_width, text_width);
         if (j == selected_row)
         {
             GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){SCALE1(PADDING), SCALE1(PADDING + ((j + has_top_margin) * PILL_SIZE)), max_width, SCALE1(PILL_SIZE)});
             text_color = COLOR_BLACK;
+            current_item_is_enabled = state->list_state->items[i].enabled;
+            if (!state->list_state->items[i].enabled)
+            {
+                text_color = (SDL_Color){TRIAD_LIGHT_GRAY};
+            }
+            if (state->list_state->items[i].supports_enabling)
+            {
+                current_item_supports_enabling = true;
+            }
+            snprintf(current_item_text, sizeof(current_item_text), "%s", state->list_state->items[i].name);
         }
-        SDL_Surface *text = TTF_RenderUTF8_Blended(font.large, state->list_state->items[i].name, text_color);
+
+        SDL_Surface *text;
+        text = TTF_RenderUTF8_Blended(font.large, truncated_display_text, text_color);
 
         SDL_Rect pos = {
             SCALE1(PADDING + BUTTON_PADDING),
@@ -524,6 +829,31 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             text->h};
         SDL_BlitSurface(text, NULL, screen, &pos);
         SDL_FreeSurface(text);
+    }
+
+    char enable_button_text[256] = "Enable";
+    if (current_item_is_enabled)
+    {
+        strncpy(enable_button_text, "Disable", sizeof(enable_button_text) - 1);
+    }
+
+    // draw the button group on the left
+    // this should only display the enable button if the current item supports enabling
+    // and should only display the action button if it is assigned to a button
+    if (current_item_supports_enabling && strcmp(state->enable_button, "") != 0)
+    {
+        if (strcmp(state->action_button, "") != 0)
+        {
+            GFX_blitButtonGroup((char *[]){state->enable_button, enable_button_text, state->action_button, state->action_text, NULL}, 0, screen, 0);
+        }
+        else
+        {
+            GFX_blitButtonGroup((char *[]){state->enable_button, enable_button_text, NULL}, 0, screen, 0);
+        }
+    }
+    else if (strcmp(state->action_button, "") != 0)
+    {
+        GFX_blitButtonGroup((char *[]){state->action_button, state->action_text, NULL}, 0, screen, 0);
     }
 
     // don't forget to reset the should_redraw flag
@@ -553,35 +883,43 @@ void signal_handler(int signal)
     // if the signal is a ctrl+c, exit with code 130
     if (signal == SIGINT)
     {
-        exit(130);
+        exit(ExitCodeKeyboardInterrupt);
     }
     else
     {
-        exit(1);
+        exit(ExitCodeError);
     }
 }
 
 // parse_arguments parses the arguments using getopt and updates the app state
 // supports the following flags:
+// - --action-button <button> (default: "X")
+// - --action-text <text> (default: "ACTION")
 // - --confirm-button <button> (default: "A")
 // - --confirm-text <text> (default: "SELECT")
 // - --cancel-button <button> (default: "B")
 // - --cancel-text <text> (default: "BACK")
+// - --enable-button <button> (default: "Y")
 // - --file <path> (default: empty string)
 // - --format <format> (default: "json")
 // - --header <title> (default: empty string)
 // - --item-key <key> (default: "items")
+// - --stdout-value <value> (default: "selected")
 bool parse_arguments(struct AppState *state, int argc, char *argv[])
 {
     static struct option long_options[] = {
+        {"action-button", required_argument, 0, 'a'},
+        {"action-text", required_argument, 0, 'A'},
         {"confirm-button", required_argument, 0, 'b'},
         {"confirm-text", required_argument, 0, 'c'},
         {"cancel-button", required_argument, 0, 'B'},
         {"cancel-text", required_argument, 0, 'C'},
+        {"enable-button", required_argument, 0, 'e'},
         {"file", required_argument, 0, 'f'},
         {"format", required_argument, 0, 'F'},
         {"item-key", required_argument, 0, 'i'},
         {"header", required_argument, 0, 'H'},
+        {"stdout-value", required_argument, 0, 's'},
         {0, 0, 0, 0}};
 
     int opt;
@@ -589,6 +927,12 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     {
         switch (opt)
         {
+        case 'a':
+            strncpy(state->action_button, optarg, sizeof(state->action_button) - 1);
+            break;
+        case 'A':
+            strncpy(state->action_text, optarg, sizeof(state->action_text) - 1);
+            break;
         case 'b':
             strncpy(state->confirm_button, optarg, sizeof(state->confirm_button) - 1);
             break;
@@ -600,6 +944,9 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             break;
         case 'C':
             strncpy(state->cancel_text, optarg, sizeof(state->cancel_text) - 1);
+            break;
+        case 'e':
+            strncpy(state->enable_button, optarg, sizeof(state->enable_button) - 1);
             break;
         case 'f':
             strncpy(state->file, optarg, sizeof(state->file) - 1);
@@ -613,15 +960,33 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'H':
             strncpy(state->title, optarg, sizeof(state->title) - 1);
             break;
+        case 's':
+            strncpy(state->stdout_value, optarg, sizeof(state->stdout_value) - 1);
+            break;
         default:
             return false;
         }
     }
 
-    // Apply parsed arguments to state
-    if (strcmp(state->confirm_button, "") == 0)
+    if (strcmp(state->format, "") == 0)
     {
-        strncpy(state->confirm_button, "A", sizeof(state->confirm_button) - 1);
+        strncpy(state->format, "json", sizeof(state->format) - 1);
+    }
+
+    if (strcmp(state->stdout_value, "") == 0)
+    {
+        strncpy(state->stdout_value, "selected", sizeof(state->stdout_value) - 1);
+    }
+
+    // Apply default values for certain buttons and texts
+    if (strcmp(state->action_button, "") == 0)
+    {
+        strncpy(state->action_button, "X", sizeof(state->action_button) - 1);
+    }
+
+    if (strcmp(state->action_text, "") == 0)
+    {
+        strncpy(state->action_text, "ACTION", sizeof(state->action_text) - 1);
     }
 
     if (strcmp(state->cancel_button, "") == 0)
@@ -637,6 +1002,153 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     if (strcmp(state->cancel_text, "") == 0)
     {
         strncpy(state->cancel_text, "BACK", sizeof(state->cancel_text) - 1);
+    }
+
+    if (strcmp(state->enable_button, "") == 0)
+    {
+        strncpy(state->enable_button, "Y", sizeof(state->enable_button) - 1);
+    }
+
+    // validate that hardware buttons aren't assigned to more than once
+    bool a_button_assigned = false;
+    bool b_button_assigned = false;
+    bool x_button_assigned = false;
+    bool y_button_assigned = false;
+    if (strcmp(state->action_button, "A") == 0)
+    {
+        a_button_assigned = true;
+    }
+    if (strcmp(state->cancel_button, "A") == 0)
+    {
+        if (a_button_assigned)
+        {
+            log_error("A button cannot be assigned to more than one button");
+            return false;
+        }
+
+        a_button_assigned = true;
+    }
+    if (strcmp(state->confirm_button, "A") == 0)
+    {
+        if (a_button_assigned)
+        {
+            log_error("A button cannot be assigned to more than one button");
+            return false;
+        }
+
+        a_button_assigned = true;
+    }
+    if (strcmp(state->enable_button, "A") == 0)
+    {
+        if (a_button_assigned)
+        {
+            log_error("A button cannot be assigned to more than one button");
+            return false;
+        }
+
+        a_button_assigned = true;
+    }
+
+    if (strcmp(state->action_button, "B") == 0)
+    {
+        b_button_assigned = true;
+    }
+    if (strcmp(state->cancel_button, "B") == 0)
+    {
+        if (b_button_assigned)
+        {
+            log_error("B button cannot be assigned to more than one button");
+            return false;
+        }
+
+        b_button_assigned = true;
+    }
+    if (strcmp(state->confirm_button, "B") == 0)
+    {
+        if (b_button_assigned)
+        {
+            log_error("B button cannot be assigned to more than one button");
+            return false;
+        }
+
+        b_button_assigned = true;
+    }
+    if (strcmp(state->enable_button, "B") == 0)
+    {
+        if (b_button_assigned)
+        {
+            log_error("B button cannot be assigned to more than one button");
+            return false;
+        }
+
+        b_button_assigned = true;
+    }
+
+    if (strcmp(state->action_button, "X") == 0)
+    {
+        x_button_assigned = true;
+    }
+    if (strcmp(state->cancel_button, "X") == 0)
+    {
+        if (x_button_assigned)
+        {
+            log_error("X button cannot be assigned to more than one button");
+            return false;
+        }
+
+        x_button_assigned = true;
+    }
+    if (strcmp(state->confirm_button, "X") == 0)
+    {
+        if (x_button_assigned)
+        {
+            log_error("X button cannot be assigned to more than one button");
+            return false;
+        }
+
+        x_button_assigned = true;
+    }
+    if (strcmp(state->enable_button, "X") == 0)
+    {
+        if (x_button_assigned)
+        {
+            log_error("X button cannot be assigned to more than one button");
+            return false;
+        }
+
+        x_button_assigned = true;
+    }
+
+    if (strcmp(state->action_button, "Y") == 0)
+    {
+        y_button_assigned = true;
+    }
+    if (strcmp(state->cancel_button, "Y") == 0)
+    {
+        if (y_button_assigned)
+        {
+            log_error("Y button cannot be assigned to more than one button");
+            return false;
+        }
+        y_button_assigned = true;
+    }
+    if (strcmp(state->confirm_button, "Y") == 0)
+    {
+        if (y_button_assigned)
+        {
+            log_error("Y button cannot be assigned to more than one button");
+            return false;
+        }
+        y_button_assigned = true;
+    }
+    if (strcmp(state->enable_button, "Y") == 0)
+    {
+        if (y_button_assigned)
+        {
+            log_error("Y button cannot be assigned to more than one button");
+            return false;
+        }
+        y_button_assigned = true;
     }
 
     // validate that the confirm and cancel buttons are valid
@@ -715,29 +1227,37 @@ int main(int argc, char *argv[])
     signal(SIGINT, signal_handler);
 
     // Initialize app state
+    char default_action_button[1024] = "X";
+    char default_action_text[1024] = "ACTION";
     char default_cancel_button[1024] = "B";
     char default_cancel_text[1024] = "BACK";
+    char default_enable_button[1024] = "Y";
     char default_confirm_button[1024] = "A";
     char default_confirm_text[1024] = "SELECT";
     char default_file[1024] = "";
     char default_format[1024] = "json";
     char default_item_key[1024] = "";
+    char default_stdout_value[1024] = "selected";
     char default_title[1024] = "";
     struct AppState state = {
-        .exit_code = EXIT_SUCCESS,
+        .exit_code = ExitCodeSuccess,
         .quitting = 0,
         .redraw = 1,
         .show_brightness_setting = 0,
         .list_state = NULL};
 
     // assign the default values to the app state
+    strncpy(state.action_button, default_action_button, sizeof(state.action_button) - 1);
+    strncpy(state.action_text, default_action_text, sizeof(state.action_text) - 1);
     strncpy(state.cancel_button, default_cancel_button, sizeof(state.cancel_button) - 1);
     strncpy(state.cancel_text, default_cancel_text, sizeof(state.cancel_text) - 1);
     strncpy(state.confirm_button, default_confirm_button, sizeof(state.confirm_button) - 1);
     strncpy(state.confirm_text, default_confirm_text, sizeof(state.confirm_text) - 1);
+    strncpy(state.enable_button, default_enable_button, sizeof(state.enable_button) - 1);
     strncpy(state.file, default_file, sizeof(state.file) - 1);
     strncpy(state.format, default_format, sizeof(state.format) - 1);
     strncpy(state.item_key, default_item_key, sizeof(state.item_key) - 1);
+    strncpy(state.stdout_value, default_stdout_value, sizeof(state.stdout_value) - 1);
     strncpy(state.title, default_title, sizeof(state.title) - 1);
 
     // parse the arguments
@@ -747,7 +1267,7 @@ int main(int argc, char *argv[])
     if (state.list_state == NULL)
     {
         log_error("Failed to create list state");
-        return EXIT_FAILURE;
+        return ExitCodeError;
     }
 
     // get initial wifi state
@@ -816,9 +1336,94 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (state.exit_code == EXIT_SUCCESS)
+    if (state.exit_code == ExitCodeSuccess || state.exit_code == ExitCodeActionButton)
     {
-        log_info(state.list_state->items[state.list_state->selected].name);
+        if (strcmp(state.stdout_value, "selected") == 0)
+        {
+            log_info(state.list_state->items[state.list_state->selected].name);
+        }
+    }
+
+    if (strcmp(state.stdout_value, "state") == 0)
+    {
+        JSON_Value *root_value = json_value_init_object();
+        JSON_Object *root_object = json_value_get_object(root_value);
+        char *serialized_string = NULL;
+        json_object_set_number(root_object, "selected", state.list_state->selected);
+
+        JSON_Array *items = json_array(json_value_init_array());
+        for (int i = 0; i < state.list_state->item_count; i++)
+        {
+            JSON_Value *val = json_value_init_object();
+            JSON_Object *obj = json_value_get_object(val);
+            if (json_object_dotset_string(obj, "name", state.list_state->items[i].name) == JSONFailure)
+            {
+                log_error("Failed to set name");
+                return ExitCodeSerializeError;
+            }
+            if ((state.list_state->items[i].has_enabled || state.list_state->items[i].has_supports_enabling) && json_object_dotset_boolean(obj, "enabled", state.list_state->items[i].enabled))
+            {
+                log_error("Failed to set enabled");
+                return ExitCodeSerializeError;
+            }
+            if ((state.list_state->items[i].has_options) && json_object_dotset_number(obj, "selected_option", state.list_state->items[i].selected_option) == JSONFailure)
+            {
+                log_error("Failed to set selected_option");
+                return ExitCodeSerializeError;
+            }
+            if (state.list_state->items[i].has_supports_enabling && json_object_dotset_boolean(obj, "supports_enabling", state.list_state->items[i].supports_enabling) == JSONFailure)
+            {
+                log_error("Failed to set supports_enabling");
+                return ExitCodeSerializeError;
+            }
+
+            if (state.list_state->items[i].has_options)
+            {
+                JSON_Array *options = json_array(json_value_init_array());
+                for (int j = 0; j < state.list_state->items[i].option_count; j++)
+                {
+                    JSON_Value *option = json_value_init_string(state.list_state->items[i].options[j]);
+                    if (json_array_append_value(options, option) == JSONFailure)
+                    {
+                        log_error("Failed to append option");
+                        return ExitCodeSerializeError;
+                    }
+                }
+                if (json_object_dotset_value(obj, "options", json_array_get_wrapping_value(options)) == JSONFailure)
+                {
+                    log_error("Failed to set options");
+                    return ExitCodeSerializeError;
+                }
+            }
+
+            JSON_Value *item_value = json_object_get_wrapping_value(obj);
+            if (json_array_append_value(items, item_value) == JSONFailure)
+            {
+                log_error("Failed to append item");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        JSON_Value *items_value = json_array_get_wrapping_value(items);
+        if (json_object_dotset_value(root_object, state.item_key, items_value) == JSONFailure)
+        {
+            log_error("Failed to set items");
+            return ExitCodeSerializeError;
+        }
+
+        root_value = json_object_get_wrapping_value(root_object);
+
+        serialized_string = json_serialize_to_string_pretty(root_value);
+        if (serialized_string == NULL)
+        {
+            log_error("Failed to serialize");
+            return ExitCodeSerializeError;
+        }
+
+        log_info(serialized_string);
+
+        json_free_serialized_string(serialized_string);
+        json_value_free(root_value);
     }
 
     swallow_stdout_from_function(destruct);
