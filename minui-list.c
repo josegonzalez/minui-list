@@ -330,12 +330,12 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             return NULL;
         }
 
-        root_value = json_parse_string(contents);
+        root_value = json_parse_string_with_comments(contents);
         free(contents);
     }
     else
     {
-        root_value = json_parse_file(filename);
+        root_value = json_parse_file_with_comments(filename);
     }
 
     if (root_value == NULL)
