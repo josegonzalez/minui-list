@@ -150,6 +150,7 @@ Properties:
 
 - name: (required, type: `string`) the option name
 - enabled: (optional, type: `boolean`, default: `true`) whether the field shows up as enabled or disabled
+- is_header: (optional, type: `boolean`, default: `false`) allows specifying that an item is a header
 - options: (optional, type: `[]string`, default: `[]`) a list of strings to display as options
 - selected_option: (optional, type: `integer`, default: `0`) the default selected option
 - supports_enabling: (optional, type: `boolean`, default: `false`) whether or not an option can be enabled or disabled
