@@ -14,7 +14,7 @@ This is a minui list app. It allows people to show a list of items or settings a
 
 ## Usage
 
-This tool is designed to be used as part of a larger minui app. It only supports an english keyboard layout, and has support for capitalized keys as well as many common special characters.
+This tool is designed to be used as part of a larger minui app.
 
 ```shell
 # default behavior is to read from a JSON file that contains a list of items at the root
@@ -175,8 +175,14 @@ Properties:
 - enabled: (optional, type: `boolean`, default: `true`) whether the field shows up as enabled or disabled
 - is_header: (optional, type: `boolean`, default: `false`) allows specifying that an item is a header
 - options: (optional, type: `[]string`, default: `[]`) a list of strings to display as options
+- selectable: (optional, type: `boolean`, default: `true`) whether an item is selectable or not
 - selected_option: (optional, type: `integer`, default: `0`) the default selected option
 - supports_enabling: (optional, type: `boolean`, default: `false`) whether or not an option can be enabled or disabled
+
+> [!WARNING]
+> If items are specified in json format, the item list _must_ have at
+> least one selectable, non-header item.
+> The `minui-list` binary will exit with an error if that is not the case.
 
 ### Exit Codes
 
