@@ -81,6 +81,26 @@ minui-list --file list.json --enable-button "Y"
 # the index of the selected item will be written
 # to the top-level `selected` property
 minui-list --file list.json --stdout-value state
+
+# paths to a custom font (.otf or .ttf) can be specified
+# the order of usage is:
+#  --font-size > --font-default > built-in minui font
+# if the font is missing and is loaded, this will result in an error
+
+# will use the specified font for all text sizes
+minui-list --file list.json --font-default full/path/to/font.otf
+
+# will use font-large.ttf for large text
+# and the default minui font (BPreplayBold-unhinted.otf) for small text
+minui-list --file list.json --font-large path/to/font-large.otf
+
+# will use font.ttf for small text
+# and font-large.ttf for large text
+minui-list --file list.json --font-default full/path/to/font.otf --font-large path/to/font-large.otf
+
+# will use font.ttf for large text
+# and font-small.ttf for small text
+minui-list --file list.json --font-default full/path/to/font.otf --font-small path/to/font-small.otf
 ```
 
 To create a list of items from newline-delimited strings, you can use jq:
