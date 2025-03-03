@@ -317,11 +317,13 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->items[item_index].has_options = false;
                 state->items[item_index].has_selectable = false;
                 state->items[item_index].has_selected_option = false;
+                state->items[item_index].has_supports_enabling = false;
                 state->items[item_index].is_header = false;
                 state->items[item_index].option_count = 0;
                 state->items[item_index].options = NULL;
                 state->items[item_index].selectable = true;
                 state->items[item_index].selected_option = 0;
+                state->items[item_index].supports_enabling = false;
                 item_index++;
             }
 
