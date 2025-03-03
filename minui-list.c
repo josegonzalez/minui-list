@@ -1058,7 +1058,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {0, 0, 0, 0}};
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "b:c:B:C:f:F:i:H:", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:b:c:B:C:e:f:F:i:H:s:", long_options, NULL)) != -1)
     {
         switch (opt)
         {
