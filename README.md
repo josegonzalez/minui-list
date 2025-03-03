@@ -197,10 +197,18 @@ Properties:
 
 ## Screenshots
 
+### No Header
+
+<img src="screenshots/no-header.png" width=240 />
+
 ### Header
 
 <img src="screenshots/header.png" width=240 />
 
-### No Header
+### Header with Action
 
-<img src="screenshots/no-header.png" width=240 />
+<img src="screenshots/header-action.png" width=240 />
+
+### JSON Input with options and headings
+
+<img src="screenshots/json-items.png" width=240 />
