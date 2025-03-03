@@ -58,6 +58,8 @@ struct ListItem
     bool has_enabled;
     // whether the item has an is_header field
     bool has_is_header;
+    // whether the item has an selectable field
+    bool has_selectable;
     // whether the item has a selected_option field
     bool has_selected_option;
     // whether the item has a supports_enabling field
@@ -70,6 +72,8 @@ struct ListItem
     int option_count;
     // a list of char options for the item
     char **options;
+    // whether the item is selectable
+    bool selectable;
     // the selected option index
     int selected_option;
     // whether the option supports enabling
@@ -311,10 +315,12 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->items[item_index].has_enabled = false;
                 state->items[item_index].has_is_header = false;
                 state->items[item_index].has_options = false;
+                state->items[item_index].has_selectable = false;
                 state->items[item_index].has_selected_option = false;
                 state->items[item_index].is_header = false;
                 state->items[item_index].option_count = 0;
                 state->items[item_index].options = NULL;
+                state->items[item_index].selectable = true;
                 state->items[item_index].selected_option = 0;
                 item_index++;
             }
@@ -383,11 +389,13 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].has_enabled = false;
             state->items[i].has_is_header = false;
             state->items[i].has_options = false;
+            state->items[i].has_selectable = false;
             state->items[i].has_selected_option = false;
             state->items[i].has_supports_enabling = false;
             state->items[i].is_header = false;
             state->items[i].option_count = 0;
             state->items[i].options = NULL;
+            state->items[i].selectable = true;
             state->items[i].selected_option = 0;
             state->items[i].supports_enabling = false;
         }
@@ -459,13 +467,34 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->items[i].has_selected_option = false;
             }
 
+            // read in the selectable from the json object
+            // if there is no selectable, set it to true
+            // if there is a selectable, treat it as a boolean
+            if (json_object_get_boolean(item, "selectable") == 1)
+            {
+                state->items[i].selectable = true;
+                state->items[i].has_selectable = true;
+            }
+            else if (json_object_get_boolean(item, "selectable") == 0)
+            {
+                state->items[i].selectable = false;
+                state->items[i].has_selectable = true;
+            }
+            else
+            {
+                state->items[i].selectable = true;
+                state->items[i].has_selectable = false;
+            }
+
             // read in the is_header from the json object
             // if there is no is_header, set it to false
             // if there is a is_header, treat it as a boolean
+            // headers are not selectable
             if (json_object_get_boolean(item, "is_header") == 1)
             {
                 state->items[i].is_header = true;
                 state->items[i].has_is_header = true;
+                state->items[i].selectable = false;
             }
             else if (json_object_get_boolean(item, "is_header") == 0)
             {
@@ -523,6 +552,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             }
         }
     }
+
     state->last_visible = (item_count < max_row_count) ? item_count : max_row_count;
     state->first_visible = 0;
     state->selected = 0;
@@ -680,15 +710,23 @@ void handle_input(struct AppState *state)
         else
         {
             state->list_state->selected -= 1;
-
-            if (state->list_state->items[state->list_state->selected].is_header)
+            while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
             {
                 state->list_state->selected -= 1;
+                if (state->list_state->selected < 0)
+                {
+                    break;
+                }
             }
 
             if (state->list_state->selected < 0)
             {
                 state->list_state->selected = state->list_state->item_count - 1;
+                while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
+                {
+                    state->list_state->selected -= 1;
+                }
+
                 int start = state->list_state->item_count - max_row_count;
                 state->list_state->first_visible = (start < 0) ? 0 : start;
                 state->list_state->last_visible = state->list_state->item_count;
@@ -710,15 +748,23 @@ void handle_input(struct AppState *state)
         else
         {
             state->list_state->selected += 1;
-
-            if (state->list_state->items[state->list_state->selected].is_header)
+            while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
             {
                 state->list_state->selected += 1;
+                if (state->list_state->selected >= state->list_state->item_count)
+                {
+                    break;
+                }
             }
 
             if (state->list_state->selected >= state->list_state->item_count)
             {
                 state->list_state->selected = 0;
+                while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
+                {
+                    state->list_state->selected += 1;
+                }
+
                 state->list_state->first_visible = 0;
                 state->list_state->last_visible = (state->list_state->item_count < max_row_count) ? state->list_state->item_count : max_row_count;
             }
@@ -747,6 +793,11 @@ void handle_input(struct AppState *state)
         else
         {
             state->list_state->selected -= max_row_count;
+            while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
+            {
+                state->list_state->selected -= 1;
+            }
+
             if (state->list_state->selected < 0)
             {
                 state->list_state->selected = 0;
@@ -757,7 +808,9 @@ void handle_input(struct AppState *state)
             {
                 state->list_state->first_visible -= max_row_count;
                 if (state->list_state->first_visible < 0)
+                {
                     state->list_state->first_visible = 0;
+                }
                 state->list_state->last_visible = state->list_state->first_visible + max_row_count;
             }
         }
@@ -780,6 +833,11 @@ void handle_input(struct AppState *state)
         else
         {
             state->list_state->selected += max_row_count;
+            while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
+            {
+                state->list_state->selected += 1;
+            }
+
             if (state->list_state->selected >= state->list_state->item_count)
             {
                 state->list_state->selected = state->list_state->item_count - 1;
@@ -791,7 +849,9 @@ void handle_input(struct AppState *state)
             {
                 state->list_state->last_visible += max_row_count;
                 if (state->list_state->last_visible > state->list_state->item_count)
+                {
                     state->list_state->last_visible = state->list_state->item_count;
+                }
                 state->list_state->first_visible = state->list_state->last_visible - max_row_count;
             }
         }
@@ -1509,6 +1569,27 @@ int main(int argc, char *argv[])
     {
         log_error("Failed to create list state");
         return ExitCodeError;
+    }
+
+    if (state.list_state->item_count > 0)
+    {
+        // if there are items in the list,
+        // validate that at least one item is not a header and is selectable
+        bool has_selectable = false;
+        for (size_t i = 0; i < state.list_state->item_count; i++)
+        {
+            state.list_state->selected = i;
+            if (!state.list_state->items[i].is_header && state.list_state->items[i].selectable)
+            {
+                has_selectable = true;
+                break;
+            }
+        }
+        if (!has_selectable)
+        {
+            log_error("No selectable items found");
+            return ExitCodeError;
+        }
     }
 
     // get initial wifi state
