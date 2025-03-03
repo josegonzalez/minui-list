@@ -197,10 +197,9 @@ Properties:
 
 ## Screenshots
 
-### Header
-
-<img src="screenshots/header.png" width=240 />
-
-### No Header
-
-<img src="screenshots/no-header.png" width=240 />
+| Name               | Image                                                 |
+|--------------------|-------------------------------------------------------|
+| No Header          | <img src="screenshots/no-header.png" width=240 />     |
+| Header             | <img src="screenshots/header.png" width=240 />        |
+| Header with Action | <img src="screenshots/header-action.png" width=240 /> |
+| JSON Kitchen Sink  | <img src="screenshots/json-items.png" width=240 />    |
