@@ -95,6 +95,15 @@ struct ListState
     bool has_options;
 };
 
+// Fonts holds the fonts for the list
+struct Fonts
+{
+    // the large font to use for the list
+    TTF_Font *large;
+    // the medium font to use for the list
+    TTF_Font *medium;
+};
+
 // AppState holds the current state of the application
 struct AppState
 {
@@ -130,6 +139,8 @@ struct AppState
     char stdout_value[1024];
     // the title of the list page
     char title[1024];
+    // the fonts to use for the list
+    struct Fonts fonts;
     // the state of the list
     struct ListState *list_state;
 };
@@ -848,7 +859,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     {
         // draw the title
         SDL_Color text_color = COLOR_GRAY;
-        SDL_Surface *text = TTF_RenderUTF8_Blended(font.medium, state->title, text_color);
+        SDL_Surface *text = TTF_RenderUTF8_Blended(state->fonts.medium, state->title, text_color);
         SDL_Rect pos = {
             SCALE1(PADDING + BUTTON_PADDING),
             SCALE1(PADDING + 4),
@@ -901,10 +912,10 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         }
 
         int color_placeholder_height;
-        TTF_SizeUTF8(font.medium, " ", NULL, &color_placeholder_height);
+        TTF_SizeUTF8(state->fonts.medium, " ", NULL, &color_placeholder_height);
 
         char truncated_display_text[256];
-        int text_width = GFX_truncateText(font.large, display_text, truncated_display_text, available_width, SCALE1(BUTTON_PADDING * 2));
+        int text_width = GFX_truncateText(state->fonts.large, display_text, truncated_display_text, available_width, SCALE1(BUTTON_PADDING * 2));
         int max_width = MIN(available_width, text_width);
         if (j == selected_row)
         {
@@ -932,7 +943,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         }
 
         SDL_Surface *text;
-        text = TTF_RenderUTF8_Blended(font.large, truncated_display_text, text_color);
+        text = TTF_RenderUTF8_Blended(state->fonts.large, truncated_display_text, text_color);
 
         SDL_Rect pos = {
             SCALE1(PADDING + BUTTON_PADDING),
@@ -1035,7 +1046,10 @@ void signal_handler(int signal)
 // - --cancel-button <button> (default: "B")
 // - --cancel-text <text> (default: "BACK")
 // - --enable-button <button> (default: "Y")
-// - --file <path> (default: empty string)
+// - --file-default <path> (default: empty string)
+// - --font-large <path> (default: empty string)
+// - --font-medium <path> (default: empty string)
+// - --font <path> (default: empty string)
 // - --format <format> (default: "json")
 // - --header <title> (default: empty string)
 // - --item-key <key> (default: "items")
@@ -1051,6 +1065,9 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"cancel-text", required_argument, 0, 'C'},
         {"enable-button", required_argument, 0, 'e'},
         {"file", required_argument, 0, 'f'},
+        {"font-default", required_argument, 0, 'D'},
+        {"font-large", required_argument, 0, 'L'},
+        {"font-medium", required_argument, 0, 'M'},
         {"format", required_argument, 0, 'F'},
         {"item-key", required_argument, 0, 'i'},
         {"header", required_argument, 0, 'H'},
@@ -1058,7 +1075,10 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {0, 0, 0, 0}};
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "a:A:b:c:B:C:e:f:F:i:H:s:", long_options, NULL)) != -1)
+    char *font_path_default = NULL;
+    char *font_path_large = NULL;
+    char *font_path_medium = NULL;
+    while ((opt = getopt_long(argc, argv, "a:A:b:c:B:C:D:e:f:F:i:H:L:M:s:", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -1083,6 +1103,9 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'e':
             strncpy(state->enable_button, optarg, sizeof(state->enable_button) - 1);
             break;
+        case 'D':
+            font_path_default = optarg;
+            break;
         case 'f':
             strncpy(state->file, optarg, sizeof(state->file) - 1);
             break;
@@ -1095,12 +1118,91 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'H':
             strncpy(state->title, optarg, sizeof(state->title) - 1);
             break;
+        case 'L':
+            font_path_large = optarg;
+            break;
+        case 'M':
+            font_path_medium = optarg;
+            break;
         case 's':
             strncpy(state->stdout_value, optarg, sizeof(state->stdout_value) - 1);
             break;
         default:
             return false;
         }
+    }
+
+    if (font_path_default != NULL)
+    {
+        // check if the font path is valid
+        if (access(font_path_default, F_OK) == -1)
+        {
+            log_error("Invalid font path provided");
+            return false;
+        }
+    }
+
+    if (font_path_large != NULL)
+    {
+        // check if the font path is valid
+        if (access(font_path_large, F_OK) == -1)
+        {
+            log_error("Invalid font path provided");
+            return false;
+        }
+
+        state->fonts.large = TTF_OpenFont(font_path_large, SCALE1(FONT_LARGE));
+        if (state->fonts.large == NULL)
+        {
+            log_error("Failed to open large font");
+            return false;
+        }
+        TTF_SetFontStyle(state->fonts.large, TTF_STYLE_BOLD);
+    }
+    else if (font_path_default != NULL)
+    {
+        state->fonts.large = TTF_OpenFont(font_path_default, SCALE1(FONT_LARGE));
+        if (state->fonts.large == NULL)
+        {
+            log_error("Failed to open default font");
+            return false;
+        }
+        TTF_SetFontStyle(state->fonts.large, TTF_STYLE_BOLD);
+    }
+    else
+    {
+        state->fonts.large = font.large;
+    }
+
+    if (font_path_medium != NULL)
+    {
+        // check if the font path is valid
+        if (access(font_path_medium, F_OK) == -1)
+        {
+            log_error("Invalid font path provided");
+            return false;
+        }
+        state->fonts.medium = TTF_OpenFont(font_path_medium, SCALE1(FONT_MEDIUM));
+        if (state->fonts.medium == NULL)
+        {
+            log_error("Failed to open medium font");
+            return false;
+        }
+        TTF_SetFontStyle(state->fonts.medium, TTF_STYLE_BOLD);
+    }
+    else if (font_path_default != NULL)
+    {
+        state->fonts.medium = TTF_OpenFont(font_path_default, SCALE1(FONT_MEDIUM));
+        if (state->fonts.medium == NULL)
+        {
+            log_error("Failed to open default font");
+            return false;
+        }
+        TTF_SetFontStyle(state->fonts.medium, TTF_STYLE_BOLD);
+    }
+    else
+    {
+        state->fonts.medium = font.medium;
     }
 
     if (strcmp(state->format, "") == 0)
@@ -1379,6 +1481,10 @@ int main(int argc, char *argv[])
         .quitting = 0,
         .redraw = 1,
         .show_brightness_setting = 0,
+        .fonts = {
+            .large = NULL,
+            .medium = NULL,
+        },
         .list_state = NULL};
 
     // assign the default values to the app state
