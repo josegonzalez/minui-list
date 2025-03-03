@@ -1101,7 +1101,7 @@ void signal_handler(int signal)
 
 // parse_arguments parses the arguments using getopt and updates the app state
 // supports the following flags:
-// - --action-button <button> (default: "X")
+// - --action-button <button> (default: "")
 // - --action-text <text> (default: "ACTION")
 // - --confirm-button <button> (default: "A")
 // - --confirm-text <text> (default: "SELECT")
@@ -1280,7 +1280,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     // Apply default values for certain buttons and texts
     if (strcmp(state->action_button, "") == 0)
     {
-        strncpy(state->action_button, "X", sizeof(state->action_button) - 1);
+        strncpy(state->action_button, "", sizeof(state->action_button) - 1);
     }
 
     if (strcmp(state->action_text, "") == 0)
@@ -1526,7 +1526,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, signal_handler);
 
     // Initialize app state
-    char default_action_button[1024] = "X";
+    char default_action_button[1024] = "";
     char default_action_text[1024] = "ACTION";
     char default_cancel_button[1024] = "B";
     char default_cancel_text[1024] = "BACK";
