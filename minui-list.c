@@ -427,6 +427,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             if (options_count > 0)
             {
                 state->has_options = true;
+                state->items[i].has_options = true;
             }
             if (json_object_has_value(item, "selected_option"))
             {
@@ -1700,11 +1701,6 @@ int main(int argc, char *argv[])
                     log_error("Failed to set enabled");
                     return ExitCodeSerializeError;
                 }
-                if ((state.list_state->items[i].has_options) && json_object_dotset_number(obj, "selected_option", state.list_state->items[i].selected_option) == JSONFailure)
-                {
-                    log_error("Failed to set selected_option");
-                    return ExitCodeSerializeError;
-                }
                 if (state.list_state->items[i].has_supports_enabling && json_object_dotset_boolean(obj, "supports_enabling", state.list_state->items[i].supports_enabling) == JSONFailure)
                 {
                     log_error("Failed to set supports_enabling");
@@ -1713,6 +1709,12 @@ int main(int argc, char *argv[])
 
                 if (state.list_state->items[i].has_options)
                 {
+                    if (json_object_dotset_number(obj, "selected_option", state.list_state->items[i].selected_option) == JSONFailure)
+                    {
+                        log_error("Failed to set selected_option");
+                        return ExitCodeSerializeError;
+                    }
+
                     JSON_Array *options = json_array(json_value_init_array());
                     for (int j = 0; j < state.list_state->items[i].option_count; j++)
                     {
