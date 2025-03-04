@@ -47,37 +47,46 @@ void log_info(const char *msg)
     printf("%s\n", msg);
 }
 
+struct ListItemFeature
+{
+    // whether the item can be disabled
+    bool can_disable;
+    // whether the item is disabled
+    bool disabled;
+    // whether or not the item is a header
+    bool is_header;
+    // whether or not the item is unselectable
+    bool unselectable;
+
+    // whether the item has a can_disable field
+    bool has_can_disable;
+    // whether the item has a disabled field
+    bool has_disabled;
+    // whether the item has a is_header field
+    bool has_is_header;
+    // whether the item has a unselectable field
+    bool has_unselectable;
+};
+
 // ListItem holds the configuration for a list item
 struct ListItem
 {
     // the name of the item
     char *name;
-    // whether the item is enabled
-    bool enabled;
-    // whether the item has an enabled field
-    bool has_enabled;
-    // whether the item has an is_header field
-    bool has_is_header;
-    // whether the item has an selectable field
-    bool has_selectable;
-    // whether the item has a selected_option field
-    bool has_selected_option;
-    // whether the item has a supports_enabling field
-    bool has_supports_enabling;
+    // whether the item has features
+    bool has_features;
     // whether the item has options field
     bool has_options;
-    // whether the item is a header
-    bool is_header;
+    // whether the item has a selected field
+    bool has_selected;
     // the number of options for the item
     int option_count;
     // a list of char options for the item
     char **options;
-    // whether the item is selectable
-    bool selectable;
     // the selected option index
-    int selected_option;
-    // whether the option supports enabling
-    bool supports_enabling;
+    int selected;
+    // the features of the item
+    struct ListItemFeature features;
 };
 
 // ListState holds the state of the list
@@ -311,19 +320,18 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 memcpy(line, line_start, line_len);
                 line[line_len] = '\0';
                 state->items[item_index].name = line;
-                state->items[item_index].enabled = true;
-                state->items[item_index].has_enabled = false;
-                state->items[item_index].has_is_header = false;
+                state->items[item_index].has_features = false;
                 state->items[item_index].has_options = false;
-                state->items[item_index].has_selectable = false;
-                state->items[item_index].has_selected_option = false;
-                state->items[item_index].has_supports_enabling = false;
-                state->items[item_index].is_header = false;
+                state->items[item_index].has_selected = false;
                 state->items[item_index].option_count = 0;
                 state->items[item_index].options = NULL;
-                state->items[item_index].selectable = true;
-                state->items[item_index].selected_option = 0;
-                state->items[item_index].supports_enabling = false;
+                state->items[item_index].selected = 0;
+                state->items[item_index].features = (struct ListItemFeature){
+                    .can_disable = false,
+                    .disabled = false,
+                    .is_header = false,
+                    .unselectable = false,
+                };
                 item_index++;
             }
 
@@ -387,19 +395,18 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].name = name ? strdup(name) : "";
 
             // set defaults for the other fields
-            state->items[i].enabled = true;
-            state->items[i].has_enabled = false;
-            state->items[i].has_is_header = false;
+            state->items[i].has_features = false;
             state->items[i].has_options = false;
-            state->items[i].has_selectable = false;
-            state->items[i].has_selected_option = false;
-            state->items[i].has_supports_enabling = false;
-            state->items[i].is_header = false;
+            state->items[i].has_selected = false;
             state->items[i].option_count = 0;
             state->items[i].options = NULL;
-            state->items[i].selectable = true;
-            state->items[i].selected_option = 0;
-            state->items[i].supports_enabling = false;
+            state->items[i].selected = 0;
+            state->items[i].features = (struct ListItemFeature){
+                .can_disable = false,
+                .disabled = false,
+                .is_header = false,
+                .unselectable = false,
+            };
         }
     }
     else
@@ -429,129 +436,137 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->has_options = true;
                 state->items[i].has_options = true;
             }
-            if (json_object_has_value(item, "selected_option"))
-            {
-                state->items[i].has_selected_option = true;
-            }
-            else
-            {
-                state->items[i].has_selected_option = false;
-            }
 
             // read in the current option index from the json object
             // if there is no current option index, set it to 0
             // if there is a current option index, treat it as an integer
-            if (json_object_has_value(item, "selected_option"))
+            if (json_object_has_value(item, "selected"))
             {
-                state->items[i].selected_option = json_object_get_number(item, "selected_option");
-                if (state->items[i].selected_option < 0)
+                state->items[i].selected = json_object_get_number(item, "selected");
+                if (state->items[i].selected < 0)
                 {
                     char error_message[256];
-                    snprintf(error_message, sizeof(error_message), "Item %s has a selected option index of %d, which is less than 0. Setting to 0.", state->items[i].name, state->items[i].selected_option);
+                    snprintf(error_message, sizeof(error_message), "Item %s has a selected option index of %d, which is less than 0. Setting to 0.", state->items[i].name, state->items[i].selected);
                     log_error(error_message);
-                    state->items[i].selected_option = 0;
+                    state->items[i].selected = 0;
                 }
-                if (state->items[i].selected_option >= options_count)
+                if (state->items[i].selected >= options_count)
                 {
                     char error_message[256];
-                    snprintf(error_message, sizeof(error_message), "Item %s has a selected option index of %d, which is greater than the number of options %d. Setting to last option.", state->items[i].name, state->items[i].selected_option, options_count);
+                    snprintf(error_message, sizeof(error_message), "Item %s has a selected option index of %d, which is greater than the number of options %d. Setting to last option.", state->items[i].name, state->items[i].selected, options_count);
                     log_error(error_message);
-                    state->items[i].selected_option = options_count - 1;
-                    if (state->items[i].selected_option < 0)
+                    state->items[i].selected = options_count - 1;
+                    if (state->items[i].selected < 0)
                     {
-                        state->items[i].selected_option = 0;
+                        state->items[i].selected = 0;
                     }
                 }
-                state->items[i].has_selected_option = true;
+                state->items[i].has_selected = true;
             }
             else
             {
-                state->items[i].selected_option = 0;
-                state->items[i].has_selected_option = false;
+                state->items[i].selected = 0;
+                state->items[i].has_selected = false;
             }
 
-            // read in the selectable from the json object
-            // if there is no selectable, set it to true
-            // if there is a selectable, treat it as a boolean
-            if (json_object_get_boolean(item, "selectable") == 1)
+            state->items[i].features = (struct ListItemFeature){
+                .can_disable = false,
+                .disabled = false,
+                .is_header = false,
+                .unselectable = false,
+            };
+            state->items[i].has_features = false;
+            if (json_object_has_value(item, "features"))
             {
-                state->items[i].selectable = true;
-                state->items[i].has_selectable = true;
-            }
-            else if (json_object_get_boolean(item, "selectable") == 0)
-            {
-                state->items[i].selectable = false;
-                state->items[i].has_selectable = true;
-            }
-            else
-            {
-                state->items[i].selectable = true;
-                state->items[i].has_selectable = false;
-            }
+                state->items[i].has_features = true;
+                JSON_Object *features = json_object_get_object(item, "features");
 
-            // read in the is_header from the json object
-            // if there is no is_header, set it to false
-            // if there is a is_header, treat it as a boolean
-            // headers are not selectable
-            if (json_object_get_boolean(item, "is_header") == 1)
-            {
-                state->items[i].is_header = true;
-                state->items[i].has_is_header = true;
-                state->items[i].selectable = false;
-            }
-            else if (json_object_get_boolean(item, "is_header") == 0)
-            {
-                state->items[i].is_header = false;
-                state->items[i].has_is_header = true;
-            }
-            else
-            {
-                state->items[i].is_header = false;
-                state->items[i].has_is_header = false;
-            }
-
-            // read in the supports_enabling from the json object
-            // if there is no supports_enabling, set it to false
-            // if there is a supports_enabling, treat it as a boolean
-            if (json_object_get_boolean(item, "supports_enabling") == 1)
-            {
-                state->items[i].supports_enabling = true;
-                state->items[i].has_supports_enabling = true;
-            }
-            else if (json_object_get_boolean(item, "supports_enabling") == 0)
-            {
-                state->items[i].supports_enabling = false;
-                state->items[i].has_supports_enabling = true;
-            }
-            else
-            {
-                state->items[i].supports_enabling = false;
-                state->items[i].has_supports_enabling = false;
-            }
-
-            // read in the enabled from the json object
-            // if there is no enabled, set it to true
-            // if there is an enabled, treat it as a boolean
-            if (json_object_get_boolean(item, "enabled") == 1)
-            {
-                state->items[i].enabled = true;
-                state->items[i].has_enabled = true;
-            }
-            else if (json_object_get_boolean(item, "enabled") == 0)
-            {
-                state->items[i].enabled = false;
-                state->items[i].has_enabled = true;
-                if (!state->items[i].supports_enabling)
+                // read in the can_disable from the json object
+                // if there is no can_disable, set it to false
+                // if there is a can_disable, treat it as a boolean
+                if (json_object_get_boolean(item, "can_disable") == 1)
                 {
-                    char error_message[256];
-                    snprintf(error_message, sizeof(error_message), "Item %s has no supports_enabling, but is disabled", state->items[i].name);
-                    log_error(error_message);
+                    state->items[i].features.can_disable = true;
+                    state->items[i].features.has_can_disable = true;
                 }
-            }
-            else
-            {
-                state->items[i].enabled = true;
-                state->items[i].has_enabled = false;
+                else if (json_object_get_boolean(item, "can_disable") == 0)
+                {
+                    state->items[i].features.can_disable = false;
+                    state->items[i].features.has_can_disable = true;
+                }
+                else
+                {
+                    state->items[i].features.can_disable = false;
+                    state->items[i].features.has_can_disable = false;
+                }
+
+                // read in the disabled from the json object
+                // if there is no disabled, set it to false
+                // if there is an disabled, treat it as a boolean
+                if (json_object_get_boolean(item, "disabled") == 1)
+                {
+                    state->items[i].features.disabled = true;
+                    state->items[i].features.has_disabled = true;
+                }
+                else if (json_object_get_boolean(item, "disabled") == 0)
+                {
+                    state->items[i].features.disabled = false;
+                    state->items[i].features.has_disabled = true;
+                    if (!state->items[i].features.can_disable)
+                    {
+                        char error_message[256];
+                        snprintf(error_message, sizeof(error_message), "Item %s has no can_disable, but is disabled", state->items[i].name);
+                        log_error(error_message);
+                    }
+                }
+                else
+                {
+                    state->items[i].features.disabled = false;
+                    state->items[i].features.has_disabled = false;
+                }
+
+                // read in the unselectable from the json object
+                // if there is no unselectable, set it to false
+                // if there is a unselectable, treat it as a boolean
+                if (json_object_get_boolean(features, "unselectable") == 1)
+                {
+                    state->items[i].features.unselectable = true;
+                    state->items[i].features.has_unselectable = true;
+                }
+                else if (json_object_get_boolean(features, "unselectable") == 0)
+                {
+                    state->items[i].features.unselectable = false;
+                    state->items[i].features.has_unselectable = true;
+                }
+                else
+                {
+                    state->items[i].features.unselectable = false;
+                    state->items[i].features.has_unselectable = false;
+                }
+
+                // read in the is_header from the json object
+                // if there is no is_header, set it to false
+                // if there is a is_header, treat it as a boolean
+                // headers are not selectable
+                if (json_object_get_boolean(features, "is_header") == 1)
+                {
+                    state->items[i].features.is_header = true;
+                    state->items[i].features.has_is_header = true;
+                    state->items[i].features.unselectable = true;
+                    state->items[i].features.has_unselectable = true;
+                }
+                else if (json_object_get_boolean(features, "is_header") == 0)
+                {
+                    state->items[i].features.is_header = false;
+                    state->items[i].features.has_is_header = true;
+                    state->items[i].features.unselectable = false;
+                    state->items[i].features.has_unselectable = false;
+                }
+                else
+                {
+                    state->items[i].features.is_header = false;
+                    state->items[i].features.has_is_header = false;
+                }
             }
         }
     }
@@ -688,10 +703,10 @@ void handle_input(struct AppState *state)
     // if the enable button is pressed, toggle the enabled state of the currently selected item
     if (is_enable_button_pressed)
     {
-        if (state->list_state->items[state->list_state->selected].supports_enabling)
+        if (state->list_state->items[state->list_state->selected].features.can_disable)
         {
             state->redraw = 1;
-            state->list_state->items[state->list_state->selected].enabled = !state->list_state->items[state->list_state->selected].enabled;
+            state->list_state->items[state->list_state->selected].features.disabled = !state->list_state->items[state->list_state->selected].features.disabled;
         }
         return;
     }
@@ -713,7 +728,7 @@ void handle_input(struct AppState *state)
         else
         {
             state->list_state->selected -= 1;
-            while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
+            while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
             {
                 state->list_state->selected -= 1;
                 if (state->list_state->selected < 0)
@@ -725,7 +740,7 @@ void handle_input(struct AppState *state)
             if (state->list_state->selected < 0)
             {
                 state->list_state->selected = state->list_state->item_count - 1;
-                while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
+                while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
                 {
                     state->list_state->selected -= 1;
                 }
@@ -751,7 +766,7 @@ void handle_input(struct AppState *state)
         else
         {
             state->list_state->selected += 1;
-            while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
+            while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
             {
                 state->list_state->selected += 1;
                 if (state->list_state->selected >= state->list_state->item_count)
@@ -763,7 +778,7 @@ void handle_input(struct AppState *state)
             if (state->list_state->selected >= state->list_state->item_count)
             {
                 state->list_state->selected = 0;
-                while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
+                while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
                 {
                     state->list_state->selected += 1;
                 }
@@ -784,19 +799,19 @@ void handle_input(struct AppState *state)
         // if the state has options, cycle through the options
         if (state->list_state->has_options)
         {
-            if (state->list_state->items[state->list_state->selected].enabled)
+            if (!state->list_state->items[state->list_state->selected].features.disabled)
             {
-                state->list_state->items[state->list_state->selected].selected_option -= 1;
-                if (state->list_state->items[state->list_state->selected].selected_option < 0)
+                state->list_state->items[state->list_state->selected].selected -= 1;
+                if (state->list_state->items[state->list_state->selected].selected < 0)
                 {
-                    state->list_state->items[state->list_state->selected].selected_option = state->list_state->items[state->list_state->selected].option_count - 1;
+                    state->list_state->items[state->list_state->selected].selected = state->list_state->items[state->list_state->selected].option_count - 1;
                 }
             }
         }
         else
         {
             state->list_state->selected -= max_row_count;
-            while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
+            while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
             {
                 state->list_state->selected -= 1;
             }
@@ -824,19 +839,19 @@ void handle_input(struct AppState *state)
         // if the state has options, cycle through the options
         if (state->list_state->has_options)
         {
-            if (state->list_state->items[state->list_state->selected].enabled)
+            if (!state->list_state->items[state->list_state->selected].features.disabled)
             {
-                state->list_state->items[state->list_state->selected].selected_option += 1;
-                if (state->list_state->items[state->list_state->selected].selected_option >= state->list_state->items[state->list_state->selected].option_count)
+                state->list_state->items[state->list_state->selected].selected += 1;
+                if (state->list_state->items[state->list_state->selected].selected >= state->list_state->items[state->list_state->selected].option_count)
                 {
-                    state->list_state->items[state->list_state->selected].selected_option = 0;
+                    state->list_state->items[state->list_state->selected].selected = 0;
                 }
             }
         }
         else
         {
             state->list_state->selected += max_row_count;
-            while (state->list_state->items[state->list_state->selected].is_header || !state->list_state->items[state->list_state->selected].selectable)
+            while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
             {
                 state->list_state->selected += 1;
             }
@@ -948,16 +963,16 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         // compute the string representation of the current item
         // to include the current option if there are any options
         // the output should be in the format of:
-        // item.name: <selected_option>
+        // item.name: <selected>
         // if there are no options, the output should be:
         // item.name
         char display_text[256];
         bool is_hex_color = false;
-        if (state->list_state->items[i].option_count > 0 && !state->list_state->items[i].is_header)
+        if (state->list_state->items[i].option_count > 0 && !state->list_state->items[i].features.is_header)
         {
-            char *selected_option = state->list_state->items[i].options[state->list_state->items[i].selected_option];
-            snprintf(display_text, sizeof(display_text), "%s: %s", state->list_state->items[i].name, selected_option);
-            is_hex_color = detect_hex_color(selected_option);
+            char *selected = state->list_state->items[i].options[state->list_state->items[i].selected];
+            snprintf(display_text, sizeof(display_text), "%s: %s", state->list_state->items[i].name, selected);
+            is_hex_color = detect_hex_color(selected);
         }
         else
         {
@@ -965,11 +980,11 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         }
 
         SDL_Color text_color = COLOR_WHITE;
-        if (!state->list_state->items[i].enabled)
+        if (state->list_state->items[i].features.disabled)
         {
             text_color = (SDL_Color){TRIAD_DARK_GRAY};
         }
-        if (state->list_state->items[i].is_header)
+        if (state->list_state->items[i].features.is_header)
         {
             text_color = COLOR_LIGHT_TEXT;
         }
@@ -983,16 +998,16 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         if (j == selected_row)
         {
             text_color = COLOR_BLACK;
-            current_item_is_enabled = state->list_state->items[i].enabled;
-            if (!state->list_state->items[i].enabled)
+            current_item_is_enabled = state->list_state->items[i].features.disabled;
+            if (state->list_state->items[i].features.disabled)
             {
                 text_color = (SDL_Color){TRIAD_LIGHT_GRAY};
             }
-            if (state->list_state->items[i].supports_enabling)
+            if (state->list_state->items[i].features.can_disable)
             {
                 current_item_supports_enabling = true;
             }
-            if (state->list_state->items[i].is_header)
+            if (state->list_state->items[i].features.is_header)
             {
                 current_item_is_header = true;
                 text_color = COLOR_LIGHT_TEXT;
@@ -1019,7 +1034,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         if (is_hex_color)
         {
             // get the hex color from the options array
-            char *hex_color = state->list_state->items[i].options[state->list_state->items[i].selected_option];
+            char *hex_color = state->list_state->items[i].options[state->list_state->items[i].selected];
             SDL_Color current_color = hex_to_sdl_color(hex_color);
             uint32_t color = SDL_MapRGBA(screen->format, current_color.r, current_color.g, current_color.b, 255);
 
@@ -1517,6 +1532,132 @@ void destruct()
     GFX_quit();
 }
 
+int output_json(struct AppState *state)
+{
+
+    JSON_Value *root_value = json_value_init_object();
+    JSON_Object *root_object = json_value_get_object(root_value);
+    char *serialized_string = NULL;
+    json_object_set_number(root_object, "selected", state->list_state->selected);
+
+    JSON_Array *items = json_array(json_value_init_array());
+    for (int i = 0; i < state->list_state->item_count; i++)
+    {
+        JSON_Value *val = json_value_init_object();
+        JSON_Object *obj = json_value_get_object(val);
+
+        JSON_Value *features_val = json_value_init_object();
+        JSON_Object *features = json_value_get_object(features_val);
+        if (json_object_dotset_string(obj, "name", state->list_state->items[i].name) == JSONFailure)
+        {
+            log_error("Failed to set name");
+            return ExitCodeSerializeError;
+        }
+
+        if (state->list_state->items[i].features.has_can_disable)
+        {
+            if (json_object_dotset_boolean(features, "can_disable", state->list_state->items[i].features.can_disable) == JSONFailure)
+            {
+                log_error("Failed to set can_disable");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        if (state->list_state->items[i].features.has_disabled || state->list_state->items[i].features.has_can_disable)
+        {
+            if (json_object_dotset_boolean(features, "disabled", state->list_state->items[i].features.disabled))
+            {
+                log_error("Failed to set enabled");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        if (state->list_state->items[i].features.has_is_header)
+        {
+            if (json_object_dotset_boolean(features, "is_header", state->list_state->items[i].features.is_header))
+            {
+                log_error("Failed to set is_header");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        if (state->list_state->items[i].features.has_unselectable)
+        {
+            if (json_object_dotset_boolean(features, "unselectable", state->list_state->items[i].features.unselectable))
+            {
+                log_error("Failed to set unselectable");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        if (state->list_state->items[i].has_options)
+        {
+            if (json_object_dotset_number(obj, "selected", state->list_state->items[i].selected) == JSONFailure)
+            {
+                log_error("Failed to set selected");
+                return ExitCodeSerializeError;
+            }
+
+            JSON_Array *options = json_array(json_value_init_array());
+            for (int j = 0; j < state->list_state->items[i].option_count; j++)
+            {
+                JSON_Value *option = json_value_init_string(state->list_state->items[i].options[j]);
+                if (json_array_append_value(options, option) == JSONFailure)
+                {
+                    log_error("Failed to append option");
+                    return ExitCodeSerializeError;
+                }
+            }
+            if (json_object_dotset_value(obj, "options", json_array_get_wrapping_value(options)) == JSONFailure)
+            {
+                log_error("Failed to set options");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        // this should always go last
+        if (state->list_state->items[i].has_features)
+        {
+            JSON_Value *features_value = json_object_get_wrapping_value(features);
+            if (json_object_dotset_value(obj, "features", features_value) == JSONFailure)
+            {
+                log_error("Failed to set features");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        JSON_Value *item_value = json_object_get_wrapping_value(obj);
+        if (json_array_append_value(items, item_value) == JSONFailure)
+        {
+            log_error("Failed to append item");
+            return ExitCodeSerializeError;
+        }
+    }
+
+    JSON_Value *items_value = json_array_get_wrapping_value(items);
+    if (json_object_dotset_value(root_object, state->item_key, items_value) == JSONFailure)
+    {
+        log_error("Failed to set items");
+        return ExitCodeSerializeError;
+    }
+
+    root_value = json_object_get_wrapping_value(root_object);
+
+    serialized_string = json_serialize_to_string_pretty(root_value);
+    if (serialized_string == NULL)
+    {
+        log_error("Failed to serialize");
+        return ExitCodeSerializeError;
+    }
+
+    log_info(serialized_string);
+
+    json_free_serialized_string(serialized_string);
+    json_value_free(root_value);
+
+    return ExitCodeSuccess;
+}
+
 // main is the entry point for the app
 int main(int argc, char *argv[])
 {
@@ -1582,7 +1723,7 @@ int main(int argc, char *argv[])
         for (size_t i = 0; i < state.list_state->item_count; i++)
         {
             state.list_state->selected = i;
-            if (!state.list_state->items[i].is_header && state.list_state->items[i].selectable)
+            if (!state.list_state->items[i].features.is_header && !state.list_state->items[i].features.unselectable)
             {
                 has_selectable = true;
                 break;
@@ -1671,96 +1812,7 @@ int main(int argc, char *argv[])
 
     if (strcmp(state.stdout_value, "state") == 0)
     {
-        JSON_Value *root_value = json_value_init_object();
-        JSON_Object *root_object = json_value_get_object(root_value);
-        char *serialized_string = NULL;
-        json_object_set_number(root_object, "selected", state.list_state->selected);
-
-        JSON_Array *items = json_array(json_value_init_array());
-        for (int i = 0; i < state.list_state->item_count; i++)
-        {
-            JSON_Value *val = json_value_init_object();
-            JSON_Object *obj = json_value_get_object(val);
-            if (json_object_dotset_string(obj, "name", state.list_state->items[i].name) == JSONFailure)
-            {
-                log_error("Failed to set name");
-                return ExitCodeSerializeError;
-            }
-            if (state.list_state->items[i].has_is_header)
-            {
-                if (json_object_dotset_boolean(obj, "is_header", state.list_state->items[i].is_header))
-                {
-                    log_error("Failed to set enabled");
-                    return ExitCodeSerializeError;
-                }
-            }
-            else
-            {
-                if ((state.list_state->items[i].has_enabled || state.list_state->items[i].has_supports_enabling) && json_object_dotset_boolean(obj, "enabled", state.list_state->items[i].enabled))
-                {
-                    log_error("Failed to set enabled");
-                    return ExitCodeSerializeError;
-                }
-                if (state.list_state->items[i].has_supports_enabling && json_object_dotset_boolean(obj, "supports_enabling", state.list_state->items[i].supports_enabling) == JSONFailure)
-                {
-                    log_error("Failed to set supports_enabling");
-                    return ExitCodeSerializeError;
-                }
-
-                if (state.list_state->items[i].has_options)
-                {
-                    if (json_object_dotset_number(obj, "selected_option", state.list_state->items[i].selected_option) == JSONFailure)
-                    {
-                        log_error("Failed to set selected_option");
-                        return ExitCodeSerializeError;
-                    }
-
-                    JSON_Array *options = json_array(json_value_init_array());
-                    for (int j = 0; j < state.list_state->items[i].option_count; j++)
-                    {
-                        JSON_Value *option = json_value_init_string(state.list_state->items[i].options[j]);
-                        if (json_array_append_value(options, option) == JSONFailure)
-                        {
-                            log_error("Failed to append option");
-                            return ExitCodeSerializeError;
-                        }
-                    }
-                    if (json_object_dotset_value(obj, "options", json_array_get_wrapping_value(options)) == JSONFailure)
-                    {
-                        log_error("Failed to set options");
-                        return ExitCodeSerializeError;
-                    }
-                }
-            }
-
-            JSON_Value *item_value = json_object_get_wrapping_value(obj);
-            if (json_array_append_value(items, item_value) == JSONFailure)
-            {
-                log_error("Failed to append item");
-                return ExitCodeSerializeError;
-            }
-        }
-
-        JSON_Value *items_value = json_array_get_wrapping_value(items);
-        if (json_object_dotset_value(root_object, state.item_key, items_value) == JSONFailure)
-        {
-            log_error("Failed to set items");
-            return ExitCodeSerializeError;
-        }
-
-        root_value = json_object_get_wrapping_value(root_object);
-
-        serialized_string = json_serialize_to_string_pretty(root_value);
-        if (serialized_string == NULL)
-        {
-            log_error("Failed to serialize");
-            return ExitCodeSerializeError;
-        }
-
-        log_info(serialized_string);
-
-        json_free_serialized_string(serialized_string);
-        json_value_free(root_value);
+        output_json(&state);
     }
 
     swallow_stdout_from_function(destruct);
