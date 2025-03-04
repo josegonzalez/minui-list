@@ -172,12 +172,32 @@ A list of objects set at a particular key. May or may not be formatted. Comments
 Properties:
 
 - name: (required, type: `string`) the option name
-- enabled: (optional, type: `boolean`, default: `true`) whether the field shows up as enabled or disabled
-- is_header: (optional, type: `boolean`, default: `false`) allows specifying that an item is a header
 - options: (optional, type: `[]string`, default: `[]`) a list of strings to display as options
-- selectable: (optional, type: `boolean`, default: `true`) whether an item is selectable or not
-- selected_option: (optional, type: `integer`, default: `0`) the default selected option
-- supports_enabling: (optional, type: `boolean`, default: `false`) whether or not an option can be enabled or disabled
+- selected: (optional, type: `integer`, default: `0`) the default selected option
+- features.can_disable: (optional, type: `boolean`, default: `false`) whether or not an option can be enabled or disabled
+- features.disabled: (optional, type: `boolean`, default: `false`) whether the field shows up as enabled or disabled
+- features.is_header: (optional, type: `boolean`, default: `false`) allows specifying that an item is a header
+- features.unselectable: (optional, type: `boolean`, default: `false`) whether an item is selectable or not
+
+Item example:
+
+```json
+{
+  "name": "item 1",
+  "options": [
+    "option 1",
+    "option 2",
+    "option 3"
+  ],
+  "selected": 1,
+  "features": {
+    "can_disable": false,
+    "disabled": false,
+    "is_header": false,
+    "unselectable": false
+  }
+}
+```
 
 > [!WARNING]
 > If items are specified in json format, the item list _must_ have at
