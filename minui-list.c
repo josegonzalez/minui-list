@@ -427,6 +427,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             if (options_count > 0)
             {
                 state->has_options = true;
+                state->items[i].has_options = true;
             }
             if (json_object_has_value(item, "selected_option"))
             {
