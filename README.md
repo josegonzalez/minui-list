@@ -176,6 +176,9 @@ Properties:
 - selected: (optional, type: `integer`, default: `0`) the default selected option
 - features.can_disable: (optional, type: `boolean`, default: `false`) whether or not an option can be enabled or disabled
 - features.disabled: (optional, type: `boolean`, default: `false`) whether the field shows up as enabled or disabled
+- features.hide_action: (optional, type: `boolean`, default: `false`) whether to show the action button on this entry or not
+- features.hide_cancel: (optional, type: `boolean`, default: `false`) whether to show the cancel button on this entry or not
+- features.hide_confirm: (optional, type: `boolean`, default: `false`) whether to show the confirm button on this entry or not
 - features.is_header: (optional, type: `boolean`, default: `false`) allows specifying that an item is a header
 - features.unselectable: (optional, type: `boolean`, default: `false`) whether an item is selectable or not
 
@@ -193,6 +196,9 @@ Item example:
   "features": {
     "can_disable": false,
     "disabled": false,
+    "hide_action": false,
+    "hide_cancel": false,
+    "hide_confirm": false,
     "is_header": false,
     "unselectable": false
   }

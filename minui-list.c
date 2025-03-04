@@ -53,6 +53,12 @@ struct ListItemFeature
     bool can_disable;
     // whether the item is disabled
     bool disabled;
+    // whether to hide the action button when the item is selected
+    bool hide_action;
+    // whether to hide the cancel button when the item is selected
+    bool hide_cancel;
+    // whether to hide the confirm button when the item is selected
+    bool hide_confirm;
     // whether or not the item is a header
     bool is_header;
     // whether or not the item is unselectable
@@ -62,6 +68,12 @@ struct ListItemFeature
     bool has_can_disable;
     // whether the item has a disabled field
     bool has_disabled;
+    // whether the item has a hide_action field
+    bool has_hide_action;
+    // whether the item has a hide_cancel field
+    bool has_hide_cancel;
+    // whether the item has a hide_confirm field
+    bool has_hide_confirm;
     // whether the item has a is_header field
     bool has_is_header;
     // whether the item has a unselectable field
@@ -329,8 +341,18 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->items[item_index].features = (struct ListItemFeature){
                     .can_disable = false,
                     .disabled = false,
+                    .hide_action = false,
+                    .hide_cancel = false,
+                    .hide_confirm = false,
                     .is_header = false,
                     .unselectable = false,
+                    .has_can_disable = false,
+                    .has_disabled = false,
+                    .has_hide_action = false,
+                    .has_hide_cancel = false,
+                    .has_hide_confirm = false,
+                    .has_is_header = false,
+                    .has_unselectable = false,
                 };
                 item_index++;
             }
@@ -404,8 +426,18 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].features = (struct ListItemFeature){
                 .can_disable = false,
                 .disabled = false,
+                .hide_action = false,
+                .hide_cancel = false,
+                .hide_confirm = false,
                 .is_header = false,
                 .unselectable = false,
+                .has_can_disable = false,
+                .has_disabled = false,
+                .has_hide_action = false,
+                .has_hide_cancel = false,
+                .has_hide_confirm = false,
+                .has_is_header = false,
+                .has_unselectable = false,
             };
         }
     }
@@ -472,8 +504,18 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].features = (struct ListItemFeature){
                 .can_disable = false,
                 .disabled = false,
+                .hide_action = false,
+                .hide_cancel = false,
+                .hide_confirm = false,
                 .is_header = false,
                 .unselectable = false,
+                .has_can_disable = false,
+                .has_disabled = false,
+                .has_hide_action = false,
+                .has_hide_cancel = false,
+                .has_hide_confirm = false,
+                .has_is_header = false,
+                .has_unselectable = false,
             };
             state->items[i].has_features = false;
             if (json_object_has_value(item, "features"))
@@ -484,12 +526,12 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 // read in the can_disable from the json object
                 // if there is no can_disable, set it to false
                 // if there is a can_disable, treat it as a boolean
-                if (json_object_get_boolean(item, "can_disable") == 1)
+                if (json_object_get_boolean(features, "can_disable") == 1)
                 {
                     state->items[i].features.can_disable = true;
                     state->items[i].features.has_can_disable = true;
                 }
-                else if (json_object_get_boolean(item, "can_disable") == 0)
+                else if (json_object_get_boolean(features, "can_disable") == 0)
                 {
                     state->items[i].features.can_disable = false;
                     state->items[i].features.has_can_disable = true;
@@ -503,12 +545,12 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 // read in the disabled from the json object
                 // if there is no disabled, set it to false
                 // if there is an disabled, treat it as a boolean
-                if (json_object_get_boolean(item, "disabled") == 1)
+                if (json_object_get_boolean(features, "disabled") == 1)
                 {
                     state->items[i].features.disabled = true;
                     state->items[i].features.has_disabled = true;
                 }
-                else if (json_object_get_boolean(item, "disabled") == 0)
+                else if (json_object_get_boolean(features, "disabled") == 0)
                 {
                     state->items[i].features.disabled = false;
                     state->items[i].features.has_disabled = true;
@@ -523,6 +565,63 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 {
                     state->items[i].features.disabled = false;
                     state->items[i].features.has_disabled = false;
+                }
+
+                // read in the hide_action from the json object
+                // if there is no hide_action, set it to false
+                // if there is a hide_action, treat it as a boolean
+                if (json_object_get_boolean(features, "hide_action") == 1)
+                {
+                    state->items[i].features.hide_action = true;
+                    state->items[i].features.has_hide_action = true;
+                }
+                else if (json_object_get_boolean(features, "hide_action") == 0)
+                {
+                    state->items[i].features.hide_action = false;
+                    state->items[i].features.has_hide_action = true;
+                }
+                else
+                {
+                    state->items[i].features.hide_action = false;
+                    state->items[i].features.has_hide_action = false;
+                }
+
+                // read in the hide_cancel from the json object
+                // if there is no hide_cancel, set it to false
+                // if there is a hide_cancel, treat it as a boolean
+                if (json_object_get_boolean(features, "hide_cancel") == 1)
+                {
+                    state->items[i].features.hide_cancel = true;
+                    state->items[i].features.has_hide_cancel = true;
+                }
+                else if (json_object_get_boolean(features, "hide_cancel") == 0)
+                {
+                    state->items[i].features.hide_cancel = false;
+                    state->items[i].features.has_hide_cancel = true;
+                }
+                else
+                {
+                    state->items[i].features.hide_cancel = false;
+                    state->items[i].features.has_hide_cancel = false;
+                }
+
+                // read in the hide_confirm from the json object
+                // if there is no hide_confirm, set it to false
+                // if there is a hide_confirm, treat it as a boolean
+                if (json_object_get_boolean(features, "hide_confirm") == 1)
+                {
+                    state->items[i].features.hide_confirm = true;
+                    state->items[i].features.has_hide_confirm = true;
+                }
+                else if (json_object_get_boolean(features, "hide_confirm") == 0)
+                {
+                    state->items[i].features.hide_confirm = false;
+                    state->items[i].features.has_hide_confirm = true;
+                }
+                else
+                {
+                    state->items[i].features.hide_confirm = false;
+                    state->items[i].features.has_hide_confirm = false;
                 }
 
                 // read in the unselectable from the json object
@@ -547,20 +646,17 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 // read in the is_header from the json object
                 // if there is no is_header, set it to false
                 // if there is a is_header, treat it as a boolean
-                // headers are not selectable
+                // headers are not selectable, so this has to go last such that we can set the unselectable flag
                 if (json_object_get_boolean(features, "is_header") == 1)
                 {
                     state->items[i].features.is_header = true;
                     state->items[i].features.has_is_header = true;
                     state->items[i].features.unselectable = true;
-                    state->items[i].features.has_unselectable = true;
                 }
                 else if (json_object_get_boolean(features, "is_header") == 0)
                 {
                     state->items[i].features.is_header = false;
                     state->items[i].features.has_is_header = true;
-                    state->items[i].features.unselectable = false;
-                    state->items[i].features.has_unselectable = false;
                 }
                 else
                 {
@@ -676,7 +772,7 @@ void handle_input(struct AppState *state)
         }
     }
 
-    if (is_action_button_pressed)
+    if (is_action_button_pressed && !state->list_state->items[state->list_state->selected].features.hide_action)
     {
         state->redraw = 0;
         state->quitting = 1;
@@ -684,7 +780,7 @@ void handle_input(struct AppState *state)
         return;
     }
 
-    if (is_cancel_button_pressed)
+    if (is_cancel_button_pressed && !state->list_state->items[state->list_state->selected].features.hide_cancel)
     {
         state->redraw = 0;
         state->quitting = 1;
@@ -692,7 +788,7 @@ void handle_input(struct AppState *state)
         return;
     }
 
-    if (is_confirm_button_pressed)
+    if (is_confirm_button_pressed && !state->list_state->items[state->list_state->selected].features.hide_confirm)
     {
         state->redraw = 0;
         state->quitting = 1;
@@ -929,7 +1025,21 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
 {
     // draw the button group on the right
     // only two buttons can be displayed at a time
-    GFX_blitButtonGroup((char *[]){state->cancel_button, state->cancel_text, state->confirm_button, state->confirm_text, NULL}, 1, screen, 1);
+    if (state->list_state->items[state->list_state->selected].features.hide_confirm)
+    {
+        if (!state->list_state->items[state->list_state->selected].features.hide_cancel)
+        {
+            GFX_blitButtonGroup((char *[]){state->cancel_button, state->cancel_text, NULL}, 1, screen, 1);
+        }
+    }
+    else if (state->list_state->items[state->list_state->selected].features.hide_cancel)
+    {
+        GFX_blitButtonGroup((char *[]){state->confirm_button, state->confirm_text, NULL}, 1, screen, 1);
+    }
+    else
+    {
+        GFX_blitButtonGroup((char *[]){state->cancel_button, state->cancel_text, state->confirm_button, state->confirm_text, NULL}, 1, screen, 1);
+    }
 
     // if there is a title specified, compute the space needed for it
     int has_top_margin = 0;
@@ -1066,7 +1176,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     // and should only display the action button if it is assigned to a button
     if (current_item_supports_enabling && strcmp(state->enable_button, "") != 0)
     {
-        if (strcmp(state->action_button, "") != 0)
+        if (strcmp(state->action_button, "") != 0 && !state->list_state->items[state->list_state->selected].features.hide_action)
         {
             GFX_blitButtonGroup((char *[]){state->enable_button, enable_button_text, state->action_button, state->action_text, NULL}, 0, screen, 0);
         }
@@ -1075,7 +1185,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             GFX_blitButtonGroup((char *[]){state->enable_button, enable_button_text, NULL}, 0, screen, 0);
         }
     }
-    else if (strcmp(state->action_button, "") != 0)
+    else if (strcmp(state->action_button, "") != 0 && !state->list_state->items[state->list_state->selected].features.hide_action)
     {
         GFX_blitButtonGroup((char *[]){state->action_button, state->action_text, NULL}, 0, screen, 0);
     }
@@ -1568,6 +1678,33 @@ int output_json(struct AppState *state)
             if (json_object_dotset_boolean(features, "disabled", state->list_state->items[i].features.disabled))
             {
                 log_error("Failed to set enabled");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        if (state->list_state->items[i].features.has_hide_action)
+        {
+            if (json_object_dotset_boolean(features, "hide_action", state->list_state->items[i].features.hide_action))
+            {
+                log_error("Failed to set hide_action");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        if (state->list_state->items[i].features.has_hide_cancel)
+        {
+            if (json_object_dotset_boolean(features, "hide_cancel", state->list_state->items[i].features.hide_cancel))
+            {
+                log_error("Failed to set hide_cancel");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        if (state->list_state->items[i].features.has_hide_confirm)
+        {
+            if (json_object_dotset_boolean(features, "hide_confirm", state->list_state->items[i].features.hide_confirm))
+            {
+                log_error("Failed to set hide_confirm");
                 return ExitCodeSerializeError;
             }
         }
