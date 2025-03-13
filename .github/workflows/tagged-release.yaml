@@ -55,20 +55,16 @@ jobs:
           mkdir -p union-${{ matrix.toolchain }}-toolchain/workspace/repo
           mv *.c Makefile union-${{ matrix.toolchain }}-toolchain/workspace/repo
 
-      - name: Build the toolchain
+      - name: Pull the toolchain
         run: |
-          docker build -t ${{ matrix.toolchain }}-toolchain .
+          docker pull savant/minui-toolchain:${{ matrix.toolchain }}
           touch .build
         working-directory: union-${{ matrix.toolchain }}-toolchain
 
       - name: Build the application
         run: |
-          set -x
-          docker run -d -v "$(pwd)/workspace":/root/workspace ${{ matrix.toolchain }}-toolchain tail -f /dev/null
-          container_id="$(docker container ls | grep ${{ matrix.toolchain }}-toolchain | awk '{print $1}')"
-          sleep 5
-          docker container ls -a
-          echo "Container ID: $container_id"
+          docker run -d -v "$(pwd)/workspace":/root/workspace savant/minui-toolchain:${{ matrix.toolchain }} tail -f /dev/null
+          container_id="$(docker container ls | grep savant/minui-toolchain:${{ matrix.toolchain }} | awk '{print $1}')"
           docker exec --env PLATFORM=${{ matrix.toolchain }} "$container_id" bash -c "source /root/.bashrc && make -C /root/workspace/repo setup"
           docker exec --env PLATFORM=${{ matrix.toolchain }} "$container_id" bash -c "source /root/.bashrc && make -C /root/workspace/repo"
           docker container rm -f "$container_id"
