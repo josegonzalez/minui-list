@@ -1367,7 +1367,7 @@ void signal_handler(int signal)
 // - --format <format> (default: "json")
 // - --header <title> (default: empty string) // functionality duplicated by 'title', kept for backwards compatibility
 // - --title <title> (default: empty string)
-// - --title_justification <justification> (default: 0)
+// - --title-justification <justification> (default: 0)
 // - --item-key <key> (default: "items")
 // - --stdout-value <value> (default: "selected")
 bool parse_arguments(struct AppState *state, int argc, char *argv[])
@@ -1387,8 +1387,8 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"format", required_argument, 0, 'F'},
         {"item-key", required_argument, 0, 'i'},
         {"header", required_argument, 0, 'H'},
-        {"title", required_argument, 0, 'T'},
-        {"title_justification", required_argument, 0, 'j'},
+        {"title", required_argument, 0, 't'},
+        {"title-justification", required_argument, 0, 'T'},
         {"stdout-value", required_argument, 0, 's'},
         {0, 0, 0, 0}};
 
@@ -1398,7 +1398,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
-    while ((opt = getopt_long(argc, argv, "a:A:b:c:B:C:D:e:f:F:i:H:T:j:L:M:s:", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:b:c:B:C:D:e:f:F:i:H:t:T:L:M:s:", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -1438,10 +1438,10 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'H':
             strncpy(state->title, optarg, sizeof(state->title) - 1);
             break;
-        case 'T':
+        case 't':
             title_arg = optarg;
             break;
-        case 'j':
+        case 'T':
             title_justification_arg = optarg;
             break;
         case 'L':
@@ -1468,19 +1468,14 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     {
         strncpy(state->title, title_arg, sizeof(state->title) - 1);
     }
+    else if (strlen(state->title) > 0)
+    {
+        // --header was used instead of --title
+        log_error("WARNING: The --header flag has been replaced by --title and may be removed in a future version. Please use --title instead.");
+    }
 
     if (title_justification_arg != NULL)
     {
-        // // The following block will cause the program to exit if the title justification is provided without a title
-        // // Leaving the block commented out reverts to not using the justification if there is no title
-        //
-        // // no justification without title
-        // if (strlen(state->title) == 0)
-        // {
-        //     log_error("WARNING: Title justification provided without a title. Please provide a title to justify.");
-        //     return false;
-        // }
-        
         int justification = atoi(title_justification_arg);
         if (justification < 0 || justification > 2)
         {

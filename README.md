@@ -50,7 +50,7 @@ minui-list --file list.json --title "Some Title"
 
 # specify justification for the title/header
 # 0 = left (default), 1 = center, 2 = right 
-minui-list --file list.json --title "Centered Title" --title_justification 1
+minui-list --file list.json --title "Centered Title" --title-justification 1
 
 # specify alternative text for the Confirm button
 # by default, the Confirm button text is "SELECT"
