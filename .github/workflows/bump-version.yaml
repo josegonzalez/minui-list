@@ -15,9 +15,6 @@ on:
           - minor
           - major
 
-env:
-  GITHUB_ACCESS_TOKEN: ${{ secrets.MINUI_ACCESS_TOKEN }}
-
 jobs:
   bump-version:
     name: bump-version
@@ -28,7 +25,6 @@ jobs:
         uses: actions/checkout@v4.1.4
         with:
           fetch-depth: 0
-          token: ${{ env.GITHUB_ACCESS_TOKEN }}
 
       - name: Get Latest Tag
         id: latest-tag
