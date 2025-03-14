@@ -1471,7 +1471,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     else if (strlen(state->title) > 0)
     {
         // --header was used instead of --title
-        log_error("WARNING: The --header flag has been replaced by --title and may be removed in a future version. Please use --title instead.");
+        log_error("WARNING: The --header flag has been replaced by --title. Please use --title instead.");
     }
 
     if (title_justification_arg != NULL)
