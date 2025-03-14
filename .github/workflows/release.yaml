@@ -1,11 +1,19 @@
 ---
-name: "tagged-release"
+name: "release"
 
 # yamllint disable-line rule:truthy
 on:
-  push:
-    tags:
-      - "*"
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "release type"
+        default: "patch"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   attestations: write
@@ -13,8 +21,8 @@ permissions:
   contents: write
 
 jobs:
-  ci:
-    name: ci
+  build:
+    name: build
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
@@ -90,11 +98,25 @@ jobs:
 
   release:
     name: release
-    runs-on: ubuntu-24.04-arm
-    needs: ci
+    runs-on: ubuntu-24.04
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Get Latest Tag
+        id: latest-tag
+        run: |
+          echo GIT_LATEST_TAG="$(git describe --tags "$(git rev-list --tags --max-count=1)")" >>"$GITHUB_OUTPUT"
+
+      - name: Compute Next Tag
+        id: next-tag
+        uses: docker://ghcr.io/dokku/semver-generator:latest
+        with:
+          bump: ${{ github.event.inputs.release_type }}
+          input: ${{ steps.latest-tag.outputs.GIT_LATEST_TAG }}
 
       - name: Generate Pattern
         id: pattern
@@ -109,9 +131,19 @@ jobs:
           pattern: ${{ steps.pattern.outputs.pattern }}-*
           merge-multiple: true
 
+      - name: Create and Push Tag
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git tag "$GIT_NEXT_TAG"
+          git push origin "$GIT_NEXT_TAG"
+        env:
+          GIT_NEXT_TAG: ${{ steps.next-tag.outputs.version }}
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true
           make_latest: "true"
+          tag_name: ${{ steps.next-tag.outputs.version }}
