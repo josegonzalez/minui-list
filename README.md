@@ -45,6 +45,13 @@ output=$(minui-list --file list.json)
 # by default, the header is empty
 minui-list --file list.json --header "Some Header"
 
+# you can also use --title instead of --header (identical functionality)
+minui-list --file list.json --title "Some Title"
+
+# specify justification for the title/header
+# 0 = left (default), 1 = center, 2 = right 
+minui-list --file list.json --title "Centered Title" --title_justification 1
+
 # specify alternative text for the Confirm button
 # by default, the Confirm button text is "SELECT"
 minui-list --file list.json --confirm-text "CHOOSE"
@@ -181,6 +188,7 @@ Properties:
 - features.hide_confirm: (optional, type: `boolean`, default: `false`) whether to show the confirm button on this entry or not
 - features.is_header: (optional, type: `boolean`, default: `false`) allows specifying that an item is a header
 - features.unselectable: (optional, type: `boolean`, default: `false`) whether an item is selectable or not
+- features.justification: (optional, type: `integer`, default: `0`) text alignment: 0 = left, 1 = center, 2 = right
 
 Item example:
 
@@ -200,7 +208,8 @@ Item example:
     "hide_cancel": false,
     "hide_confirm": false,
     "is_header": false,
-    "unselectable": false
+    "unselectable": false,
+    "justification": 0
   }
 }
 ```
@@ -229,3 +238,4 @@ Item example:
 | Header             | <img src="screenshots/header.png" width=240 />        |
 | Header with Action | <img src="screenshots/header-action.png" width=240 /> |
 | JSON Kitchen Sink  | <img src="screenshots/json-items.png" width=240 />    |
+| Justified Items    | <img src="screenshots/justified.png" width=240 />     |
