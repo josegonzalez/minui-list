@@ -63,8 +63,8 @@ struct ListItemFeature
     bool is_header;
     // whether or not the item is unselectable
     bool unselectable;
-    // justification of the item text (0 = left, 1 = center, 2 = right)
-    int justification;
+    // justification of the item text ('left', 'center', 'right')
+    char justification[1024];
 
     // whether the item has a can_disable field
     bool has_can_disable;
@@ -168,8 +168,8 @@ struct AppState
     char stdout_value[1024];
     // the title of the list page
     char title[1024];
-    // the title justification (0 = left, 1 = center, 2 = right)
-    int title_justification;
+    // the title justification ('left', 'center', 'right')
+    char title_justification[1024];
     // the fonts to use for the list
     struct Fonts fonts;
     // the state of the list
@@ -352,7 +352,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     .hide_confirm = false,
                     .is_header = false,
                     .unselectable = false,
-                    .justification = 0,
+                    .justification = "",
                     .has_can_disable = false,
                     .has_disabled = false,
                     .has_hide_action = false,
@@ -362,6 +362,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     .has_unselectable = false,
                     .has_justification = false,
                 };
+                strncpy(state->items[item_index].features.justification, "left", sizeof(state->items[item_index].features.justification) - 1);
                 item_index++;
             }
 
@@ -439,7 +440,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .hide_confirm = false,
                 .is_header = false,
                 .unselectable = false,
-                .justification = 0,
+                .justification = "",
                 .has_can_disable = false,
                 .has_disabled = false,
                 .has_hide_action = false,
@@ -449,6 +450,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .has_unselectable = false,
                 .has_justification = false,
             };
+            strncpy(state->items[i].features.justification, "left", sizeof(state->items[i].features.justification) - 1);
         }
     }
     else
@@ -519,7 +521,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .hide_confirm = false,
                 .is_header = false,
                 .unselectable = false,
-                .justification = 0,
+                .justification = "",
                 .has_can_disable = false,
                 .has_disabled = false,
                 .has_hide_action = false,
@@ -529,6 +531,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .has_unselectable = false,
                 .has_justification = false,
             };
+            strncpy(state->items[i].features.justification, "left", sizeof(state->items[i].features.justification) - 1);
             state->items[i].has_features = false;
             if (json_object_has_value(item, "features"))
             {
@@ -677,21 +680,28 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 }
 
                 // read in the justification from the json object
-                // if there is no justification, set it to 0 (left alignment)
-                // if there is a justification, it should be 0 (left), 1 (center), or 2 (right)
-                int just_val = (int)json_object_get_number(features, "justification");
-                if (just_val >= 0 && just_val <= 2)
+                // if there is no justification, set it to 'left'
+                // if there is a justification, it should be 'left', 'center', or 'right'
+                const char *justification = json_object_get_string(features, "justification");
+                if (justification != NULL)
                 {
-                    state->items[i].features.justification = just_val;
-                    state->items[i].features.has_justification = true;
+                    if (strcmp(justification, "left") == 0 || strcmp(justification, "center") == 0 || strcmp(justification, "right") == 0)
+                    {
+                        strncpy(state->items[i].features.justification, justification, sizeof(state->items[i].features.justification) - 1);
+                        state->items[i].features.has_justification = true;
+                    }
+                    else
+                    {
+                        char error_message[256];
+                        snprintf(error_message, sizeof(error_message), "Item %s has invalid justification %s. Must be 'left', 'center', or 'right'. Using default (left).", state->items[i].name, justification);
+                        log_error(error_message);
+                        strncpy(state->items[i].features.justification, "left", sizeof(state->items[i].features.justification) - 1);
+                        state->items[i].features.has_justification = false;
+                    }
                 }
                 else
                 {
-                    // Either no justification specified or invalid value
-                    char error_message[256];
-                    snprintf(error_message, sizeof(error_message), "Item %s has invalid justification %d. Must be 0 (left), 1 (center), or 2 (right). Using default (0).", state->items[i].name, (int)just_val);
-                    log_error(error_message);
-                    state->items[i].features.justification = 0;
+                    strncpy(state->items[i].features.justification, "left", sizeof(state->items[i].features.justification) - 1);
                     state->items[i].features.has_justification = false;
                 }
             }
@@ -1081,23 +1091,25 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         char truncated_title_text[256];
         int title_width = GFX_truncateText(state->fonts.medium, state->title, truncated_title_text, title_available_width, SCALE1(BUTTON_PADDING * 2));
 
+        // compute the x position of the title based on the justification
         int title_x_pos;
-        switch (state->title_justification) {
-            case 1: // Center
-                title_x_pos = (screen->w - title_width) / 2 + SCALE1(BUTTON_PADDING);
-                int title_interference = title_width - (title_available_width - ow - SCALE1(PADDING)); // extra ow and padding account for centered text, i.e. available width is offset by ow and padding on both sides of screen
-                if (title_interference > 0)
-                {
-                    title_x_pos -= title_interference/2;
-                }
-                break;
-            case 2: // Right
-                title_x_pos = screen->w - title_width - ow - SCALE1(PADDING * 2) + SCALE1(BUTTON_PADDING);
-                break;
-            case 0: // Left (default)
-            default:
-                title_x_pos = SCALE1(PADDING + BUTTON_PADDING);
-                break;
+        const char *title_justification = state->title_justification ? state->title_justification : "left";
+        if (strcmp(title_justification, "center") == 0)
+        {
+            title_x_pos = (screen->w - title_width) / 2 + SCALE1(BUTTON_PADDING);
+            int title_interference = title_width - (title_available_width - ow - SCALE1(PADDING)); // extra ow and padding account for centered text, i.e. available width is offset by ow and padding on both sides of screen
+            if (title_interference > 0)
+            {
+                title_x_pos -= title_interference/2;
+            }
+        }
+        else if (strcmp(title_justification, "right") == 0)
+        {
+            title_x_pos = screen->w - title_width - ow - SCALE1(PADDING * 2) + SCALE1(BUTTON_PADDING);
+        }
+        else // left (default)
+        {
+            title_x_pos = SCALE1(PADDING + BUTTON_PADDING);
         }
 
         // draw the title
@@ -1168,7 +1180,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         char truncated_display_text[256];
         int text_width = GFX_truncateText(state->fonts.large, display_text, truncated_display_text, available_width, SCALE1(BUTTON_PADDING * 2));
         int pill_width = MIN(available_width, text_width) + color_box_space;
-        int justification = state->list_state->items[i].features.justification;
+        char *justification = state->list_state->items[i].features.justification;
 
         if (j == selected_row)
         {
@@ -1190,33 +1202,33 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
 
             // Calculate pill position based on justification
             int pill_x_pos;
-            switch (justification) {
-                case 1: // Center
-                    pill_x_pos = (screen->w - pill_width) / 2;
-                    break;
-                case 2: // Right
-                    pill_x_pos = screen->w - pill_width - SCALE1(PADDING);
-                    break;
-                case 0: // Left (default)
-                default:
-                    pill_x_pos = SCALE1(PADDING);
-                    break;
+            if (strcmp(justification, "center") == 0)
+            {
+                pill_x_pos = (screen->w - pill_width) / 2;
+            }
+            else if (strcmp(justification, "right") == 0)
+            {
+                pill_x_pos = screen->w - pill_width - SCALE1(PADDING);
+            }
+            else // left (default)
+            {
+                pill_x_pos = SCALE1(PADDING);
             }
 
             // Adjust for the pill position in the top row without title
             if (in_top_row_no_title)
             {
-                if (justification ==2) // Right
-                {
-                    pill_x_pos -= (ow + SCALE1(PADDING));
-                }
-                else if (justification == 1) // Center
+                if (strcmp(justification, "center") == 0)
                 {
                     int interference = pill_width - (available_width - ow - SCALE1(PADDING)); // extra ow and padding account for centered text, i.e. available width is offset by ow and padding on both sides of screen
                     if (interference > 0)
                     {
                         pill_x_pos -= interference / 2;
                     }
+                }
+                else if (strcmp(justification, "right") == 0)
+                {
+                    pill_x_pos -= (ow + SCALE1(PADDING));
                 }
             }
 
@@ -1227,40 +1239,39 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         text = TTF_RenderUTF8_Blended(state->fonts.large, truncated_display_text, text_color);
 
         // Calculate text position based on justification
-        int x_pos;
-        switch (justification)
+        int text_x_pos;
+        if (strcmp(justification, "center") == 0)
         {
-            case 1: // Center
-                x_pos = (screen->w - text->w - color_box_space) / 2;
-                break;
-            case 2: // Right
-                x_pos = screen->w - text->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
-                break;
-            case 0: // Left (default)
-            default:
-                x_pos = SCALE1(PADDING + BUTTON_PADDING);
-                break;
+            text_x_pos = (screen->w - text->w - color_box_space) / 2;
+        }
+        else if (strcmp(justification, "right") == 0)
+        {
+            text_x_pos = screen->w - text->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
+        }
+        else // left (default)
+        {
+            text_x_pos = SCALE1(PADDING + BUTTON_PADDING);
         }
 
         // Adjust for the pill position in the top row without title
         if (in_top_row_no_title)
         {
-            if (justification ==2) // Right
-            {
-                x_pos -= (ow + SCALE1(PADDING));
-            }
-            else if (justification == 1) // Center
+            if (strcmp(justification, "center") == 0)
             {
                 int interference = pill_width - (available_width - ow - SCALE1(PADDING)); // extra ow and padding account for centered text, i.e. available width is offset by ow and padding on both sides of screen
                 if (interference > 0)
                 {
-                    x_pos -= interference / 2;
+                    text_x_pos -= interference / 2;
                 }
+            }
+            else if (strcmp(justification, "right") == 0)
+            {
+                text_x_pos -= (ow + SCALE1(PADDING));
             }
         }
 
         SDL_Rect pos = {
-            x_pos,
+            text_x_pos,
             SCALE1(PADDING + ((i - state->list_state->first_visible + has_top_margin) * PILL_SIZE) + 4),
             text->w,
             text->h};
@@ -1277,14 +1288,14 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             // Draw outline cube
             uint32_t outline_color = sdl_color_to_uint32(text_color);
             SDL_Rect outline_rect = {
-                x_pos + text->w + SCALE1(PADDING),
+                text_x_pos + text->w + SCALE1(PADDING),
                 SCALE1(PADDING + ((i - state->list_state->first_visible + has_top_margin) * PILL_SIZE) + 5), color_placeholder_height,
                 color_placeholder_height};
             SDL_FillRect(screen, &(SDL_Rect){outline_rect.x, outline_rect.y, outline_rect.w, outline_rect.h}, outline_color);
 
             // Draw color cube
             SDL_Rect color_rect = {
-                x_pos + text->w + SCALE1(PADDING) + 2,
+                text_x_pos + text->w + SCALE1(PADDING) + 2,
                 SCALE1(PADDING + ((i - state->list_state->first_visible + has_top_margin) * PILL_SIZE) + 5) + 2, color_placeholder_height - 4,
                 color_placeholder_height - 4};
             SDL_FillRect(screen, &(SDL_Rect){color_rect.x, color_rect.y, color_rect.w, color_rect.h}, color);
@@ -1367,7 +1378,7 @@ void signal_handler(int signal)
 // - --format <format> (default: "json")
 // - --header <title> (default: empty string) // functionality duplicated by 'title', kept for backwards compatibility
 // - --title <title> (default: empty string)
-// - --title-justification <justification> (default: 0)
+// - --title-justification <justification> (default: "left")
 // - --item-key <key> (default: "items")
 // - --stdout-value <value> (default: "selected")
 bool parse_arguments(struct AppState *state, int argc, char *argv[])
@@ -1393,8 +1404,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {0, 0, 0, 0}};
 
     int opt;
-    char *title_arg = NULL;
-    char *title_justification_arg = NULL;
+    char *header_arg = NULL;
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
@@ -1436,13 +1446,13 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             strncpy(state->item_key, optarg, sizeof(state->item_key) - 1);
             break;
         case 'H':
-            strncpy(state->title, optarg, sizeof(state->title) - 1);
+            header_arg = optarg;
             break;
         case 't':
-            title_arg = optarg;
+            strncpy(state->title, optarg, sizeof(state->title) - 1);
             break;
         case 'T':
-            title_justification_arg = optarg;
+            strncpy(state->title_justification, optarg, sizeof(state->title_justification) - 1);
             break;
         case 'L':
             font_path_large = optarg;
@@ -1458,31 +1468,23 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         }
     }
 
-        // If we already have a title, don't overwrite it with the --title argument. Log an error and return false if both are provided
-    if (title_arg != NULL && strlen(state->title) > 0)
+    // If we already have a title, don't overwrite it with the --header argument. Log an error and return false if both are provided
+    if (header_arg != NULL && strlen(state->title) > 0)
     {
         log_error("Both --header and --title arguments provided. Please use only one.");
         return false;
     }
-    else if (title_arg != NULL)
-    {
-        strncpy(state->title, title_arg, sizeof(state->title) - 1);
-    }
-    else if (strlen(state->title) > 0)
+    else if (header_arg != NULL)
     {
         // --header was used instead of --title
         log_error("WARNING: The --header flag has been replaced by --title. Please use --title instead.");
     }
 
-    if (title_justification_arg != NULL)
+    // validate title justification
+    if (strcmp(state->title_justification, "left") != 0 && strcmp(state->title_justification, "center") != 0 && strcmp(state->title_justification, "right") != 0)
     {
-        int justification = atoi(title_justification_arg);
-        if (justification < 0 || justification > 2)
-        {
-            log_error("Invalid title justification provided. Please provide a value between 0 and 2.");
-            return false;
-        }
-        state->title_justification = justification;
+        log_error("Invalid title justification provided. Please provide a value of 'left', 'center', or 'right'.");
+        return false;
     }
 
     if (font_path_default != NULL)
@@ -1894,7 +1896,7 @@ int output_json(struct AppState *state)
 
         if (state->list_state->items[i].features.has_justification)
         {
-            if (json_object_dotset_number(features, "justification", state->list_state->items[i].features.justification) == JSONFailure)
+            if (json_object_dotset_string(features, "justification", state->list_state->items[i].features.justification) == JSONFailure)
             {
                 log_error("Failed to set justification");
                 return ExitCodeSerializeError;
@@ -1991,7 +1993,7 @@ int main(int argc, char *argv[])
     char default_item_key[1024] = "";
     char default_stdout_value[1024] = "selected";
     char default_title[1024] = "";
-    int default_title_justification = 0;
+    char default_title_justification[1024] = "left";
     struct AppState state = {
         .exit_code = ExitCodeSuccess,
         .quitting = 0,
@@ -2016,7 +2018,7 @@ int main(int argc, char *argv[])
     strncpy(state.item_key, default_item_key, sizeof(state.item_key) - 1);
     strncpy(state.stdout_value, default_stdout_value, sizeof(state.stdout_value) - 1);
     strncpy(state.title, default_title, sizeof(state.title) - 1);
-    state.title_justification = default_title_justification;
+    strncpy(state.title_justification, default_title_justification, sizeof(state.title_justification) - 1);
 
     // parse the arguments
     parse_arguments(&state, argc, argv);
