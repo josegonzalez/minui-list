@@ -41,16 +41,13 @@ minui-list --file list.json > output.txt
 # or capture output to a variable for use in a shell script
 output=$(minui-list --file list.json)
 
-# specify a header for the keyboard page
-# by default, the header is empty
-minui-list --file list.json --header "Some Header"
-
-# you can also use --title instead of --header (identical functionality)
+# specify a title for the list page (replaces --header in previous versions)
+# by default, the title is empty
 minui-list --file list.json --title "Some Title"
 
-# specify justification for the title/header
-# 0 = left (default), 1 = center, 2 = right 
-minui-list --file list.json --title "Centered Title" --title-justification 1
+# specify alignment for the title
+# left aligned by default, options are "left", "center", "right"
+minui-list --file list.json --title "Centered Title" --title-alignment center
 
 # specify alternative text for the Confirm button
 # by default, the Confirm button text is "SELECT"
@@ -188,7 +185,7 @@ Properties:
 - features.hide_confirm: (optional, type: `boolean`, default: `false`) whether to show the confirm button on this entry or not
 - features.is_header: (optional, type: `boolean`, default: `false`) allows specifying that an item is a header
 - features.unselectable: (optional, type: `boolean`, default: `false`) whether an item is selectable or not
-- features.justification: (optional, type: `integer`, default: `0`) text alignment: 0 = left, 1 = center, 2 = right
+- features.alignment: (optional, type: `string`, default: `left`) text alignment: 'left', 'center', or 'right'
 
 Item example:
 
@@ -209,7 +206,7 @@ Item example:
     "hide_confirm": false,
     "is_header": false,
     "unselectable": false,
-    "justification": 0
+    "alignment": "left"
   }
 }
 ```
@@ -238,4 +235,4 @@ Item example:
 | Header             | <img src="screenshots/header.png" width=240 />        |
 | Header with Action | <img src="screenshots/header-action.png" width=240 /> |
 | JSON Kitchen Sink  | <img src="screenshots/json-items.png" width=240 />    |
-| Justified Items    | <img src="screenshots/justified.png" width=240 />     |
+| Aligned Items      | <img src="screenshots/aligned.png" width=240 />     |
