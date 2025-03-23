@@ -1,11 +1,11 @@
-#include <stdio.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <getopt.h>
+#include <msettings.h>
+#include <parson/parson.h>
 #include <signal.h>
 #include <stdbool.h>
-#include <msettings.h>
-#include <getopt.h>
-#include <parson/parson.h>
+#include <stdio.h>
+#include <unistd.h>
 #ifdef USE_SDL2
 #include <SDL2/SDL_ttf.h>
 #else
