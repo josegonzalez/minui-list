@@ -156,6 +156,8 @@ struct AppState
     char cancel_button[1024];
     // the text to display on the Cancel button
     char cancel_text[1024];
+    // whether to disable sleep
+    bool disable_auto_sleep;
     // the button to display on the Enable button
     char enable_button[1024];
     // the path to the JSON file
@@ -1100,7 +1102,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             int title_interference = title_width - (title_available_width - ow - SCALE1(PADDING)); // extra ow and padding account for centered text, i.e. available width is offset by ow and padding on both sides of screen
             if (title_interference > 0)
             {
-                title_x_pos -= title_interference/2;
+                title_x_pos -= title_interference / 2;
             }
         }
         else if (strcmp(title_alignment, "right") == 0)
@@ -1397,6 +1399,7 @@ void signal_handler(int signal)
 // - --cancel-button <button> (default: "B")
 // - --cancel-text <text> (default: "BACK")
 // - --enable-button <button> (default: "Y")
+// - --disable-auto-sleep (default: false)
 // - --font-default <path> (default: empty string)
 // - --font-large <path> (default: empty string)
 // - --font-medium <path> (default: empty string)
@@ -1416,6 +1419,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"cancel-button", required_argument, 0, 'B'},
         {"cancel-text", required_argument, 0, 'C'},
         {"enable-button", required_argument, 0, 'e'},
+        {"disable-auto-sleep", no_argument, 0, 'd'},
         {"file", required_argument, 0, 'f'},
         {"font-default", required_argument, 0, 'D'},
         {"font-large", required_argument, 0, 'L'},
@@ -1433,7 +1437,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
-    while ((opt = getopt_long(argc, argv, "a:A:b:c:B:C:D:e:f:F:i:H:t:T:L:M:s:", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:b:c:B:C:dD:e:f:F:i:H:t:T:L:M:s:", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -1457,6 +1461,9 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             break;
         case 'e':
             strncpy(state->enable_button, optarg, sizeof(state->enable_button) - 1);
+            break;
+        case 'd':
+            state->disable_auto_sleep = true;
             break;
         case 'D':
             font_path_default = optarg;
@@ -2024,6 +2031,7 @@ int main(int argc, char *argv[])
         .quitting = 0,
         .redraw = 1,
         .show_brightness_setting = 0,
+        .disable_auto_sleep = false,
         .fonts = {
             .large = NULL,
             .medium = NULL,
@@ -2082,6 +2090,11 @@ int main(int argc, char *argv[])
     // draw the screen at least once
     // handle_input sets state.redraw to 0 if no key is pressed
     int was_ever_drawn = 0;
+
+    if (state.disable_auto_sleep)
+    {
+        PWR_disableAutosleep();
+    }
 
     while (!state.quitting)
     {
