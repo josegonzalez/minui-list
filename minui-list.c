@@ -1194,22 +1194,48 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     state->redraw = 0;
 }
 
+// suppress_output suppresses stdout and stderr
+// returns a single integer containing both file descriptors
+int suppress_output(void)
+{
+    int stdout_fd = dup(STDOUT_FILENO);
+    int stderr_fd = dup(STDERR_FILENO);
+
+    int dev_null_fd = open("/dev/null", O_WRONLY);
+    dup2(dev_null_fd, STDOUT_FILENO);
+    dup2(dev_null_fd, STDERR_FILENO);
+    close(dev_null_fd);
+
+    return (stdout_fd << 16) | stderr_fd;
+}
+
+// restore_output restores stdout and stderr to the original file descriptors
+void restore_output(int saved_fds)
+{
+    int stdout_fd = (saved_fds >> 16) & 0xFFFF;
+    int stderr_fd = saved_fds & 0xFFFF;
+
+    fflush(stdout);
+    fflush(stderr);
+
+    dup2(stdout_fd, STDOUT_FILENO);
+    dup2(stderr_fd, STDERR_FILENO);
+
+    close(stdout_fd);
+    close(stderr_fd);
+}
+
 // swallow_stdout_from_function swallows stdout from a function
 // this is useful for suppressing output from a function
 // that we don't want to see in the log file
 // the InitSettings() function is an example of this (some implementations print to stdout)
 void swallow_stdout_from_function(void (*func)(void))
 {
-    int original_stdout = dup(STDOUT_FILENO);
-    int dev_null = open("/dev/null", O_WRONLY);
-
-    dup2(dev_null, STDOUT_FILENO);
-    close(dev_null);
+    int saved_fds = suppress_output();
 
     func();
 
-    dup2(original_stdout, STDOUT_FILENO);
-    close(original_stdout);
+    restore_output(saved_fds);
 }
 
 void signal_handler(int signal)
