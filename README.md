@@ -105,6 +105,10 @@ minui-list --file list.json --font-default full/path/to/font.otf --font-large pa
 # will use font.ttf for large text
 # and font-small.ttf for small text
 minui-list --file list.json --font-default full/path/to/font.otf --font-small path/to/font-small.otf
+
+# minui-list will auto-sleep like the normal minui menu by default
+# this can be disabled by setting the --disable-auto-sleep flag
+minui-list --file list.json --disable-auto-sleep
 ```
 
 To create a list of items from newline-delimited strings, you can use jq:
