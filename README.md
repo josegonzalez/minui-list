@@ -180,7 +180,7 @@ A list of objects set at a particular key. May or may not be formatted. Comments
 Properties:
 
 - name: (required, type: `string`) the option name
-- options: (optional, type: `[]string`, default: `[]`) a list of strings to display as options
+- options: (optional, type: `[]string`, default: `[]`) a list of strings to display as options. The arrow keys can be used to change the selected option, and the confirm button will be hidden if the currently selected option is the same as the default selected option.
 - selected: (optional, type: `integer`, default: `0`) the default selected option
 - features.can_disable: (optional, type: `boolean`, default: `false`) whether or not an option can be enabled or disabled
 - features.disabled: (optional, type: `boolean`, default: `false`) whether the field shows up as enabled or disabled
