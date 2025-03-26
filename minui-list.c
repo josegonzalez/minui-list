@@ -53,6 +53,8 @@ struct ListItemFeature
     bool can_disable;
     // whether the item is disabled
     bool disabled;
+    // whether to draw arrows around the item
+    bool draw_arrows;
     // whether to hide the action button when the item is selected
     bool hide_action;
     // whether to hide the cancel button when the item is selected
@@ -70,6 +72,8 @@ struct ListItemFeature
     bool has_can_disable;
     // whether the item has a disabled field
     bool has_disabled;
+    // whether the item has a draw_arrows field
+    bool has_draw_arrows;
     // whether the item has a hide_action field
     bool has_hide_action;
     // whether the item has a hide_cancel field
@@ -352,6 +356,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->items[item_index].features = (struct ListItemFeature){
                     .can_disable = false,
                     .disabled = false,
+                    .draw_arrows = false,
                     .hide_action = false,
                     .hide_cancel = false,
                     .hide_confirm = false,
@@ -359,6 +364,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     .unselectable = false,
                     .alignment = "",
                     .has_can_disable = false,
+                    .has_draw_arrows = false,
                     .has_disabled = false,
                     .has_hide_action = false,
                     .has_hide_cancel = false,
@@ -441,6 +447,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].features = (struct ListItemFeature){
                 .can_disable = false,
                 .disabled = false,
+                .draw_arrows = false,
                 .hide_action = false,
                 .hide_cancel = false,
                 .hide_confirm = false,
@@ -449,6 +456,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .alignment = "",
                 .has_can_disable = false,
                 .has_disabled = false,
+                .has_draw_arrows = false,
                 .has_hide_action = false,
                 .has_hide_cancel = false,
                 .has_hide_confirm = false,
@@ -528,6 +536,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].features = (struct ListItemFeature){
                 .can_disable = false,
                 .disabled = false,
+                .draw_arrows = false,
                 .hide_action = false,
                 .hide_cancel = false,
                 .hide_confirm = false,
@@ -536,6 +545,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .alignment = "",
                 .has_can_disable = false,
                 .has_disabled = false,
+                .has_draw_arrows = false,
                 .has_hide_action = false,
                 .has_hide_cancel = false,
                 .has_hide_confirm = false,
@@ -592,6 +602,25 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 {
                     state->items[i].features.disabled = false;
                     state->items[i].features.has_disabled = false;
+                }
+
+                // read in the draw_arrows from the json object
+                // if there is no draw_arrows, set it to false
+                // if there is a draw_arrows, treat it as a boolean
+                if (json_object_get_boolean(features, "draw_arrows") == 1)
+                {
+                    state->items[i].features.draw_arrows = true;
+                    state->items[i].features.has_draw_arrows = true;
+                }
+                else if (json_object_get_boolean(features, "draw_arrows") == 0)
+                {
+                    state->items[i].features.draw_arrows = false;
+                    state->items[i].features.has_draw_arrows = true;
+                }
+                else
+                {
+                    state->items[i].features.draw_arrows = false;
+                    state->items[i].features.has_draw_arrows = false;
                 }
 
                 // read in the hide_action from the json object
@@ -1173,7 +1202,14 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         if (state->list_state->items[i].option_count > 0 && !state->list_state->items[i].features.is_header)
         {
             char *selected = state->list_state->items[i].options[state->list_state->items[i].selected];
-            snprintf(display_text, sizeof(display_text), "%s: %s", state->list_state->items[i].name, selected);
+            if (state->list_state->items[i].features.draw_arrows)
+            {
+                snprintf(display_text, sizeof(display_text), "%s: ‹ %s ›", state->list_state->items[i].name, selected);
+            }
+            else
+            {
+                snprintf(display_text, sizeof(display_text), "%s: %s", state->list_state->items[i].name, selected);
+            }
             is_hex_color = detect_hex_color(selected);
         }
         else
@@ -1898,6 +1934,15 @@ int output_json(struct AppState *state)
             if (json_object_dotset_boolean(features, "disabled", state->list_state->items[i].features.disabled))
             {
                 log_error("Failed to set enabled");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        if (state->list_state->items[i].features.has_draw_arrows)
+        {
+            if (json_object_dotset_boolean(features, "draw_arrows", state->list_state->items[i].features.draw_arrows))
+            {
+                log_error("Failed to set draw_arrows");
                 return ExitCodeSerializeError;
             }
         }
