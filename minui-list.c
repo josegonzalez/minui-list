@@ -101,6 +101,8 @@ struct ListItem
     char **options;
     // the selected option index
     int selected;
+    // the initial selected option index
+    int initial_selected;
     // the features of the item
     struct ListItemFeature features;
 };
@@ -346,6 +348,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->items[item_index].option_count = 0;
                 state->items[item_index].options = NULL;
                 state->items[item_index].selected = 0;
+                state->items[item_index].initial_selected = 0;
                 state->items[item_index].features = (struct ListItemFeature){
                     .can_disable = false,
                     .disabled = false,
@@ -434,6 +437,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].option_count = 0;
             state->items[i].options = NULL;
             state->items[i].selected = 0;
+            state->items[i].initial_selected = 0;
             state->items[i].features = (struct ListItemFeature){
                 .can_disable = false,
                 .disabled = false,
@@ -482,6 +486,10 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->has_options = true;
                 state->items[i].has_options = true;
             }
+            else
+            {
+                state->items[i].has_options = false;
+            }
 
             // read in the current option index from the json object
             // if there is no current option index, set it to 0
@@ -514,6 +522,8 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->items[i].selected = 0;
                 state->items[i].has_selected = false;
             }
+
+            state->items[i].initial_selected = state->items[i].selected;
 
             state->items[i].features = (struct ListItemFeature){
                 .can_disable = false,
@@ -1066,9 +1076,20 @@ uint32_t sdl_color_to_uint32(SDL_Color color)
 // draw_screen interprets the app state and draws it to the screen
 void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
 {
+    bool force_hide_confirm = false;
+    if (state->list_state->items[state->list_state->selected].has_options && state->list_state->items[state->list_state->selected].initial_selected == state->list_state->items[state->list_state->selected].selected)
+    {
+        force_hide_confirm = true;
+    }
+
+    if (state->list_state->items[state->list_state->selected].features.hide_confirm)
+    {
+        force_hide_confirm = true;
+    }
+
     // draw the button group on the right
     // only two buttons can be displayed at a time
-    if (state->list_state->items[state->list_state->selected].features.hide_confirm)
+    if (force_hide_confirm)
     {
         if (!state->list_state->items[state->list_state->selected].features.hide_cancel)
         {
