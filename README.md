@@ -182,7 +182,9 @@ Properties:
 - name: (required, type: `string`) the option name
 - options: (optional, type: `[]string`, default: `[]`) a list of strings to display as options. The arrow keys can be used to change the selected option, and the confirm button will be hidden if the currently selected option is the same as the default selected option.
 - selected: (optional, type: `integer`, default: `0`) the default selected option
+- features.alignment: (optional, type: `string`, default: `left`) text alignment: 'left', 'center', or 'right'
 - features.can_disable: (optional, type: `boolean`, default: `false`) whether or not an option can be enabled or disabled
+- features.confirm_text: (optional, type: `string`, default: ``) text to use to override the default confirm text for the entry
 - features.disabled: (optional, type: `boolean`, default: `false`) whether the field shows up as enabled or disabled
 - features.draw_arrows: (optional, type: `boolean`, default: `false`) whether to show options with arrows around them (hex color boxes will be outside of the arrow)
 - features.hide_action: (optional, type: `boolean`, default: `false`) whether to show the action button on this entry or not
@@ -190,7 +192,6 @@ Properties:
 - features.hide_confirm: (optional, type: `boolean`, default: `false`) whether to show the confirm button on this entry or not
 - features.is_header: (optional, type: `boolean`, default: `false`) allows specifying that an item is a header
 - features.unselectable: (optional, type: `boolean`, default: `false`) whether an item is selectable or not
-- features.alignment: (optional, type: `string`, default: `left`) text alignment: 'left', 'center', or 'right'
 
 Item example:
 
@@ -204,15 +205,16 @@ Item example:
   ],
   "selected": 1,
   "features": {
+    "alignment": "left",
     "can_disable": false,
+    "confirm_text": "SAVE",
     "disabled": false,
     "draw_arrows": false,
     "hide_action": false,
     "hide_cancel": false,
     "hide_confirm": false,
     "is_header": false,
-    "unselectable": false,
-    "alignment": "left"
+    "unselectable": false
   }
 }
 ```
