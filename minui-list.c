@@ -1367,7 +1367,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         if (strcmp(display_selected_text, "") != 0)
         {
             initial_cube_x_pos = screen->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
-            if (j != 0)
+            if (j != 0 || strlen(state->title) > 0)
             {
                 SDL_Surface *selected_text;
                 selected_text = TTF_RenderUTF8_Blended(state->fonts.large, display_selected_text, COLOR_WHITE);
