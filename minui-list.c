@@ -53,6 +53,8 @@ struct ListItemFeature
 {
     // whether the item can be disabled
     bool can_disable;
+    // the confirm text to display on the confirm button
+    char confirm_text[1024];
     // whether the item is disabled
     bool disabled;
     // whether to draw arrows around the item
@@ -72,6 +74,8 @@ struct ListItemFeature
 
     // whether the item has a can_disable field
     bool has_can_disable;
+    // whether the item has a confirm_text field
+    bool has_confirm_text;
     // whether the item has a disabled field
     bool has_disabled;
     // whether the item has a draw_arrows field
@@ -263,7 +267,7 @@ char *read_file(const char *filename)
 }
 
 // ListState_New creates a new ListState from a JSON file
-struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *title)
+struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *title, const char *confirm_text)
 {
     struct ListState *state = malloc(sizeof(struct ListState));
 
@@ -357,6 +361,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->items[item_index].initial_selected = 0;
                 state->items[item_index].features = (struct ListItemFeature){
                     .can_disable = false,
+                    .confirm_text = "",
                     .disabled = false,
                     .draw_arrows = false,
                     .hide_action = false,
@@ -366,6 +371,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     .unselectable = false,
                     .alignment = "",
                     .has_can_disable = false,
+                    .has_confirm_text = false,
                     .has_draw_arrows = false,
                     .has_disabled = false,
                     .has_hide_action = false,
@@ -376,6 +382,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     .has_alignment = false,
                 };
                 strncpy(state->items[item_index].features.alignment, "left", sizeof(state->items[item_index].features.alignment) - 1);
+                strncpy(state->items[item_index].features.confirm_text, confirm_text, sizeof(state->items[item_index].features.confirm_text) - 1);
                 item_index++;
             }
 
@@ -448,6 +455,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].initial_selected = 0;
             state->items[i].features = (struct ListItemFeature){
                 .can_disable = false,
+                .confirm_text = "",
                 .disabled = false,
                 .draw_arrows = false,
                 .hide_action = false,
@@ -457,6 +465,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .unselectable = false,
                 .alignment = "",
                 .has_can_disable = false,
+                .has_confirm_text = false,
                 .has_disabled = false,
                 .has_draw_arrows = false,
                 .has_hide_action = false,
@@ -467,6 +476,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .has_alignment = false,
             };
             strncpy(state->items[i].features.alignment, "left", sizeof(state->items[i].features.alignment) - 1);
+            strncpy(state->items[i].features.confirm_text, confirm_text, sizeof(state->items[i].features.confirm_text) - 1);
         }
     }
     else
@@ -537,6 +547,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
 
             state->items[i].features = (struct ListItemFeature){
                 .can_disable = false,
+                .confirm_text = "",
                 .disabled = false,
                 .draw_arrows = false,
                 .hide_action = false,
@@ -546,6 +557,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .unselectable = false,
                 .alignment = "",
                 .has_can_disable = false,
+                .has_confirm_text = false,
                 .has_disabled = false,
                 .has_draw_arrows = false,
                 .has_hide_action = false,
@@ -556,6 +568,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .has_alignment = false,
             };
             strncpy(state->items[i].features.alignment, "left", sizeof(state->items[i].features.alignment) - 1);
+            strncpy(state->items[i].features.confirm_text, confirm_text, sizeof(state->items[i].features.confirm_text) - 1);
             state->items[i].has_features = false;
             if (json_object_has_value(item, "features"))
             {
@@ -746,6 +759,19 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 {
                     strncpy(state->items[i].features.alignment, "left", sizeof(state->items[i].features.alignment) - 1);
                     state->items[i].features.has_alignment = false;
+                }
+
+                // read in the alignment from the json object
+                // if there is no alignment, set it to 'left'
+                // if there is a alignment, it should be 'left', 'center', or 'right'
+                const char *confirm_text = json_object_get_string(features, "confirm_text");
+                if (confirm_text != NULL)
+                {
+                    if (strlen(confirm_text) > 0)
+                    {
+                        strncpy(state->items[i].features.confirm_text, confirm_text, sizeof(state->items[i].features.confirm_text) - 1);
+                        state->items[i].features.has_confirm_text = true;
+                    }
                 }
             }
         }
@@ -1129,11 +1155,11 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     }
     else if (state->list_state->items[state->list_state->selected].features.hide_cancel)
     {
-        GFX_blitButtonGroup((char *[]){state->confirm_button, state->confirm_text, NULL}, 1, screen, 1);
+        GFX_blitButtonGroup((char *[]){state->confirm_button, state->list_state->items[state->list_state->selected].features.confirm_text, NULL}, 1, screen, 1);
     }
     else
     {
-        GFX_blitButtonGroup((char *[]){state->cancel_button, state->cancel_text, state->confirm_button, state->confirm_text, NULL}, 1, screen, 1);
+        GFX_blitButtonGroup((char *[]){state->cancel_button, state->cancel_text, state->confirm_button, state->list_state->items[state->list_state->selected].features.confirm_text, NULL}, 1, screen, 1);
     }
 
     // if there is a title specified, compute the space needed for it
@@ -1960,6 +1986,24 @@ int output_json(struct AppState *state)
             return ExitCodeSerializeError;
         }
 
+        if (state->list_state->items[i].features.has_alignment)
+        {
+            if (json_object_dotset_string(features, "alignment", state->list_state->items[i].features.alignment) == JSONFailure)
+            {
+                log_error("Failed to set alignment");
+                return ExitCodeSerializeError;
+            }
+        }
+
+        if (state->list_state->items[i].features.has_confirm_text)
+        {
+            if (json_object_dotset_string(features, "confirm_text", state->list_state->items[i].features.confirm_text) == JSONFailure)
+            {
+                log_error("Failed to set confirm_text");
+                return ExitCodeSerializeError;
+            }
+        }
+
         if (state->list_state->items[i].features.has_can_disable)
         {
             if (json_object_dotset_boolean(features, "can_disable", state->list_state->items[i].features.can_disable) == JSONFailure)
@@ -2028,15 +2072,6 @@ int output_json(struct AppState *state)
             if (json_object_dotset_boolean(features, "unselectable", state->list_state->items[i].features.unselectable))
             {
                 log_error("Failed to set unselectable");
-                return ExitCodeSerializeError;
-            }
-        }
-
-        if (state->list_state->items[i].features.has_alignment)
-        {
-            if (json_object_dotset_string(features, "alignment", state->list_state->items[i].features.alignment) == JSONFailure)
-            {
-                log_error("Failed to set alignment");
                 return ExitCodeSerializeError;
             }
         }
@@ -2162,7 +2197,7 @@ int main(int argc, char *argv[])
     // parse the arguments
     parse_arguments(&state, argc, argv);
 
-    state.list_state = ListState_New(state.file, state.format, state.item_key, state.title);
+    state.list_state = ListState_New(state.file, state.format, state.item_key, state.title, state.confirm_text);
     if (state.list_state == NULL)
     {
         log_error("Failed to create list state");
