@@ -31,6 +31,8 @@ enum list_result_t
 };
 typedef int ExitCode;
 
+#define OPTION_PADDING 8
+
 // log_error logs a message to stderr for debugging purposes
 void log_error(const char *msg)
 {
@@ -1198,19 +1200,37 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         // if there are no options, the output should be:
         // item.name
         char display_text[256];
+        char display_selected_text[256];
+        char *alignment = state->list_state->items[i].features.alignment;
         bool is_hex_color = false;
-        if (state->list_state->items[i].option_count > 0 && !state->list_state->items[i].features.is_header)
+        strncpy(display_selected_text, "", sizeof(display_selected_text));
+        if (state->list_state->items[i].option_count > 0)
         {
             char *selected = state->list_state->items[i].options[state->list_state->items[i].selected];
-            if (state->list_state->items[i].features.draw_arrows)
+            is_hex_color = detect_hex_color(selected);
+            if (strcmp(alignment, "left") == 0)
             {
-                snprintf(display_text, sizeof(display_text), "%s: ‹ %s ›", state->list_state->items[i].name, selected);
+                snprintf(display_text, sizeof(display_text), "%s", state->list_state->items[i].name);
+                if (state->list_state->items[i].features.draw_arrows)
+                {
+                    snprintf(display_selected_text, sizeof(display_selected_text), "‹ %s ›", selected);
+                }
+                else
+                {
+                    snprintf(display_selected_text, sizeof(display_selected_text), "%s", selected);
+                }
             }
             else
             {
-                snprintf(display_text, sizeof(display_text), "%s: %s", state->list_state->items[i].name, selected);
+                if (state->list_state->items[i].features.draw_arrows)
+                {
+                    snprintf(display_text, sizeof(display_text), "%s: ‹ %s ›", state->list_state->items[i].name, selected);
+                }
+                else
+                {
+                    snprintf(display_text, sizeof(display_text), "%s: %s", state->list_state->items[i].name, selected);
+                }
             }
-            is_hex_color = detect_hex_color(selected);
         }
         else
         {
@@ -1239,7 +1259,6 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         char truncated_display_text[256];
         int text_width = GFX_truncateText(state->fonts.large, display_text, truncated_display_text, available_width, SCALE1(BUTTON_PADDING * 2));
         int pill_width = MIN(available_width, text_width) + color_box_space;
-        char *alignment = state->list_state->items[i].features.alignment;
 
         if (j == selected_row)
         {
@@ -1291,6 +1310,11 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
                 }
             }
 
+            if (strcmp(display_selected_text, "") != 0)
+            {
+                GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + ((j + has_top_margin) * PILL_SIZE)), screen->w - SCALE1(PADDING + BUTTON_MARGIN), SCALE1(PILL_SIZE)});
+            }
+
             GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + ((j + has_top_margin) * PILL_SIZE)), pill_width, SCALE1(PILL_SIZE)});
         }
 
@@ -1337,6 +1361,22 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         SDL_BlitSurface(text, NULL, screen, &pos);
         SDL_FreeSurface(text);
 
+        int initial_cube_x_pos = text_x_pos + text->w;
+
+        // draw the selected text
+        if (strcmp(display_selected_text, "") != 0)
+        {
+            initial_cube_x_pos = screen->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
+            if (j != 0)
+            {
+                SDL_Surface *selected_text;
+                selected_text = TTF_RenderUTF8_Blended(state->fonts.large, display_selected_text, COLOR_WHITE);
+                pos = (SDL_Rect){screen->w - selected_text->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space, pos.y, selected_text->w, selected_text->h};
+                SDL_BlitSurface(selected_text, NULL, screen, &pos);
+                SDL_FreeSurface(selected_text);
+            }
+        }
+
         if (is_hex_color)
         {
             // get the hex color from the options array
@@ -1347,14 +1387,14 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             // Draw outline cube
             uint32_t outline_color = sdl_color_to_uint32(text_color);
             SDL_Rect outline_rect = {
-                text_x_pos + text->w + SCALE1(PADDING),
+                initial_cube_x_pos + SCALE1(PADDING),
                 SCALE1(PADDING + ((i - state->list_state->first_visible + has_top_margin) * PILL_SIZE) + 5), color_placeholder_height,
                 color_placeholder_height};
             SDL_FillRect(screen, &(SDL_Rect){outline_rect.x, outline_rect.y, outline_rect.w, outline_rect.h}, outline_color);
 
             // Draw color cube
             SDL_Rect color_rect = {
-                text_x_pos + text->w + SCALE1(PADDING) + 2,
+                initial_cube_x_pos + SCALE1(PADDING) + 2,
                 SCALE1(PADDING + ((i - state->list_state->first_visible + has_top_margin) * PILL_SIZE) + 5) + 2, color_placeholder_height - 4,
                 color_placeholder_height - 4};
             SDL_FillRect(screen, &(SDL_Rect){color_rect.x, color_rect.y, color_rect.w, color_rect.h}, color);
