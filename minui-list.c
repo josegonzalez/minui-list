@@ -25,9 +25,13 @@ enum list_result_t
     ExitCodeCancelButton = 2,
     ExitCodeMenuButton = 3,
     ExitCodeActionButton = 4,
+    ExitCodeInactionButton = 5,
+    ExitCodeStartButton = 6,
     ExitCodeParseError = 10,
     ExitCodeSerializeError = 11,
+    ExitCodeTimeout = 124,
     ExitCodeKeyboardInterrupt = 130,
+    ExitCodeSigterm = 143,
 };
 typedef int ExitCode;
 
@@ -1507,6 +1511,10 @@ void signal_handler(int signal)
     {
         exit(ExitCodeKeyboardInterrupt);
     }
+    else if (signal == SIGTERM)
+    {
+        exit(ExitCodeSigterm);
+    }
     else
     {
         exit(ExitCodeError);
@@ -2147,12 +2155,6 @@ int output_json(struct AppState *state)
 // main is the entry point for the app
 int main(int argc, char *argv[])
 {
-    // swallow all stdout from init calls
-    // MinUI will sometimes randomly log to stdout
-    swallow_stdout_from_function(init);
-
-    signal(SIGINT, signal_handler);
-
     // Initialize app state
     char default_action_button[1024] = "";
     char default_action_text[1024] = "ACTION";
@@ -2227,6 +2229,13 @@ int main(int argc, char *argv[])
             return ExitCodeError;
         }
     }
+
+    // swallow all stdout from init calls
+    // MinUI will sometimes randomly log to stdout
+    swallow_stdout_from_function(init);
+
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
     // get initial wifi state
     int was_online = PLAT_isOnline();
