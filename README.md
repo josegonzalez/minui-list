@@ -41,6 +41,11 @@ minui-list --file list.json > output.txt
 # or capture output to a variable for use in a shell script
 output=$(minui-list --file list.json)
 
+# you can also specify a location to write to
+# the internal minui sdk sometimes writes to stdout
+# depending on platform, so this may be useful
+minui-list --write-location file.txt
+
 # specify a title for the list page (replaces --header in previous versions)
 # by default, the title is empty
 minui-list --file list.json --title "Some Title"
@@ -84,7 +89,7 @@ minui-list --file list.json --enable-button "Y"
 # regardless of exit code
 # the index of the selected item will be written
 # to the top-level `selected` property
-minui-list --file list.json --stdout-value state
+minui-list --file list.json --write-value state
 
 # paths to a custom font (.otf or .ttf) can be specified
 # the order of usage is:

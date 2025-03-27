@@ -182,12 +182,14 @@ struct AppState
     char format[1024];
     // the key to the items array in the JSON file
     char item_key[1024];
-    // the value to write to stdout (selected, state)
-    char stdout_value[1024];
     // the title of the list page
     char title[1024];
     // the title alignment ('left', 'center', 'right')
     char title_alignment[1024];
+    // the location to write the value to
+    char write_location[1024];
+    // the value to write (selected, state)
+    char write_value[1024];
     // the fonts to use for the list
     struct Fonts fonts;
     // the state of the list
@@ -1535,11 +1537,11 @@ void signal_handler(int signal)
 // - --font-large <path> (default: empty string)
 // - --font-medium <path> (default: empty string)
 // - --format <format> (default: "json")
-// - --header <title> (default: empty string) // functionality duplicated by 'title', kept for backwards compatibility
 // - --title <title> (default: empty string)
 // - --title-alignment <alignment> (default: "left")
 // - --item-key <key> (default: "items")
-// - --stdout-value <value> (default: "selected")
+// - --write-location <location> (default: "-")
+// - --write-value <value> (default: "selected")
 bool parse_arguments(struct AppState *state, int argc, char *argv[])
 {
     static struct option long_options[] = {
@@ -1560,7 +1562,8 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"header", required_argument, 0, 'H'},
         {"title", required_argument, 0, 't'},
         {"title-alignment", required_argument, 0, 'T'},
-        {"stdout-value", required_argument, 0, 's'},
+        {"write-location", required_argument, 0, 'w'},
+        {"write-value", required_argument, 0, 'W'},
         {0, 0, 0, 0}};
 
     int opt;
@@ -1568,7 +1571,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
-    while ((opt = getopt_long(argc, argv, "a:A:b:c:B:C:dD:e:f:F:i:H:t:T:L:M:s:", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:b:c:B:C:dD:e:f:F:i:H:t:T:L:M:s:w:", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -1623,8 +1626,11 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'M':
             font_path_medium = optarg;
             break;
-        case 's':
-            strncpy(state->stdout_value, optarg, sizeof(state->stdout_value) - 1);
+        case 'w':
+            strncpy(state->write_location, optarg, sizeof(state->write_location) - 1);
+            break;
+        case 'W':
+            strncpy(state->write_value, optarg, sizeof(state->write_value) - 1);
             break;
         default:
             return false;
@@ -1728,9 +1734,9 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         strncpy(state->format, "json", sizeof(state->format) - 1);
     }
 
-    if (strcmp(state->stdout_value, "") == 0)
+    if (strcmp(state->write_value, "") == 0)
     {
-        strncpy(state->stdout_value, "selected", sizeof(state->stdout_value) - 1);
+        strncpy(state->write_value, "selected", sizeof(state->write_value) - 1);
     }
 
     // Apply default values for certain buttons and texts
@@ -1972,8 +1978,41 @@ void destruct()
     GFX_quit();
 }
 
-int output_json(struct AppState *state)
+// write_to_file writes some text to a file
+int write_to_file(const char *filename, const char *text)
 {
+    FILE *file = fopen(filename, "w");
+    if (file == NULL)
+    {
+        log_error("Failed to open write location");
+        return;
+    }
+
+    int num_elements = strlen(text) / sizeof(text[0]);
+    fwrite(text, sizeof(char), num_elements, file);
+    fclose(file);
+
+    return ExitCodeSuccess;
+}
+
+// write_output writes the final text to the write location
+int write_output(struct AppState *state)
+{
+    if (strcmp(state->write_value, "selected") == 0)
+    {
+        if (state->exit_code != ExitCodeSuccess && state->exit_code != ExitCodeActionButton)
+        {
+            return state->exit_code;
+        }
+
+        if (strcmp(state->write_location, "-") != 0)
+        {
+            log_info(state->list_state->items[state->list_state->selected].name);
+        }
+
+        write_to_file(state->write_location, state->list_state->items[state->list_state->selected].name);
+        return state->exit_code;
+    }
 
     JSON_Value *root_value = json_value_init_object();
     JSON_Object *root_object = json_value_get_object(root_value);
@@ -2144,12 +2183,21 @@ int output_json(struct AppState *state)
         return ExitCodeSerializeError;
     }
 
-    log_info(serialized_string);
+    if (strcmp(state->write_location, "-") != 0)
+    {
+        log_info(serialized_string);
+    }
+    else
+    {
+        write_to_file(state->write_location, serialized_string);
+    }
+
+    write_to_file(state->write_location, serialized_string);
 
     json_free_serialized_string(serialized_string);
     json_value_free(root_value);
 
-    return ExitCodeSuccess;
+    return state->exit_code;
 }
 
 // main is the entry point for the app
@@ -2166,9 +2214,10 @@ int main(int argc, char *argv[])
     char default_file[1024] = "";
     char default_format[1024] = "json";
     char default_item_key[1024] = "";
-    char default_stdout_value[1024] = "selected";
+    char default_write_value[1024] = "selected";
     char default_title[1024] = "";
     char default_title_alignment[1024] = "left";
+    char default_write_location[1024] = "-";
     struct AppState state = {
         .exit_code = ExitCodeSuccess,
         .quitting = 0,
@@ -2192,9 +2241,10 @@ int main(int argc, char *argv[])
     strncpy(state.file, default_file, sizeof(state.file) - 1);
     strncpy(state.format, default_format, sizeof(state.format) - 1);
     strncpy(state.item_key, default_item_key, sizeof(state.item_key) - 1);
-    strncpy(state.stdout_value, default_stdout_value, sizeof(state.stdout_value) - 1);
+    strncpy(state.write_value, default_write_value, sizeof(state.write_value) - 1);
     strncpy(state.title, default_title, sizeof(state.title) - 1);
     strncpy(state.title_alignment, default_title_alignment, sizeof(state.title_alignment) - 1);
+    strncpy(state.write_location, default_write_location, sizeof(state.write_location) - 1);
 
     // parse the arguments
     if (!parse_arguments(&state, argc, argv))
@@ -2308,17 +2358,10 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (state.exit_code == ExitCodeSuccess || state.exit_code == ExitCodeActionButton)
+    int exit_code = write_output(&state);
+    if (exit_code != ExitCodeSuccess)
     {
-        if (strcmp(state.stdout_value, "selected") == 0)
-        {
-            log_info(state.list_state->items[state.list_state->selected].name);
-        }
-    }
-
-    if (strcmp(state.stdout_value, "state") == 0)
-    {
-        output_json(&state);
+        return exit_code;
     }
 
     swallow_stdout_from_function(destruct);
