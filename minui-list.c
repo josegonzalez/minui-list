@@ -1912,7 +1912,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
 
     if (strlen(state->file) == 0)
     {
-        log_error("No file provided");
+        log_error("No input provided");
         return false;
     }
 
@@ -2195,7 +2195,10 @@ int main(int argc, char *argv[])
     strncpy(state.title_alignment, default_title_alignment, sizeof(state.title_alignment) - 1);
 
     // parse the arguments
-    parse_arguments(&state, argc, argv);
+    if (!parse_arguments(&state, argc, argv))
+    {
+        return ExitCodeError;
+    }
 
     state.list_state = ListState_New(state.file, state.format, state.item_key, state.title, state.confirm_text);
     if (state.list_state == NULL)
