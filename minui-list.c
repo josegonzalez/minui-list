@@ -25,9 +25,13 @@ enum list_result_t
     ExitCodeCancelButton = 2,
     ExitCodeMenuButton = 3,
     ExitCodeActionButton = 4,
+    ExitCodeInactionButton = 5,
+    ExitCodeStartButton = 6,
     ExitCodeParseError = 10,
     ExitCodeSerializeError = 11,
+    ExitCodeTimeout = 124,
     ExitCodeKeyboardInterrupt = 130,
+    ExitCodeSigterm = 143,
 };
 typedef int ExitCode;
 
