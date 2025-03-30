@@ -147,6 +147,12 @@ struct Fonts
     TTF_Font *large;
     // the medium font to use for the list
     TTF_Font *medium;
+    // the path to the default font to use for the list
+    char *default_font;
+    // the path to the large font to use for the list
+    char *large_font;
+    // the path to the medium font to use for the list
+    char *medium_font;
 };
 
 // AppState holds the current state of the application
@@ -1462,6 +1468,84 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     state->redraw = 0;
 }
 
+bool open_fonts(struct AppState *state)
+{
+    if (state->fonts.default_font != NULL)
+    {
+        // check if the font path is valid
+        if (access(state->fonts.default_font, F_OK) == -1)
+        {
+            log_error("Invalid font path provided");
+            return false;
+        }
+    }
+
+    if (state->fonts.large_font != NULL)
+    {
+        // check if the font path is valid
+        if (access(state->fonts.large_font, F_OK) == -1)
+        {
+            log_error("Invalid font path provided");
+            return false;
+        }
+
+        state->fonts.large = TTF_OpenFont(state->fonts.large_font, SCALE1(FONT_LARGE));
+        if (state->fonts.large == NULL)
+        {
+            log_error("Failed to open large font");
+            return false;
+        }
+        TTF_SetFontStyle(state->fonts.large, TTF_STYLE_BOLD);
+    }
+    else if (state->fonts.default_font != NULL)
+    {
+        state->fonts.large = TTF_OpenFont(state->fonts.default_font, SCALE1(FONT_LARGE));
+        if (state->fonts.large == NULL)
+        {
+            log_error("Failed to open default font");
+            return false;
+        }
+        TTF_SetFontStyle(state->fonts.large, TTF_STYLE_BOLD);
+    }
+    else
+    {
+        state->fonts.large = font.large;
+    }
+
+    if (state->fonts.medium_font != NULL)
+    {
+        // check if the font path is valid
+        if (access(state->fonts.medium_font, F_OK) == -1)
+        {
+            log_error("Invalid font path provided");
+            return false;
+        }
+        state->fonts.medium = TTF_OpenFont(state->fonts.medium_font, SCALE1(FONT_MEDIUM));
+        if (state->fonts.medium == NULL)
+        {
+            log_error("Failed to open medium font");
+            return false;
+        }
+        TTF_SetFontStyle(state->fonts.medium, TTF_STYLE_BOLD);
+    }
+    else if (state->fonts.default_font != NULL)
+    {
+        state->fonts.medium = TTF_OpenFont(state->fonts.default_font, SCALE1(FONT_MEDIUM));
+        if (state->fonts.medium == NULL)
+        {
+            log_error("Failed to open default font");
+            return false;
+        }
+        TTF_SetFontStyle(state->fonts.medium, TTF_STYLE_BOLD);
+    }
+    else
+    {
+        state->fonts.medium = font.medium;
+    }
+
+    return true;
+}
+
 // suppress_output suppresses stdout and stderr
 // returns a single integer containing both file descriptors
 int suppress_output(void)
@@ -1600,7 +1684,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             state->disable_auto_sleep = true;
             break;
         case 'D':
-            font_path_default = optarg;
+            strncpy(state->fonts.default_font, optarg, sizeof(state->fonts.default_font) - 1);
             break;
         case 'f':
             strncpy(state->file, optarg, sizeof(state->file) - 1);
@@ -1621,10 +1705,10 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             strncpy(state->title_alignment, optarg, sizeof(state->title_alignment) - 1);
             break;
         case 'L':
-            font_path_large = optarg;
+            strncpy(state->fonts.large_font, optarg, sizeof(state->fonts.large_font) - 1);
             break;
         case 'M':
-            font_path_medium = optarg;
+            strncpy(state->fonts.medium_font, optarg, sizeof(state->fonts.medium_font) - 1);
             break;
         case 'w':
             strncpy(state->write_location, optarg, sizeof(state->write_location) - 1);
@@ -1654,79 +1738,6 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     {
         log_error("Invalid title alignment provided. Please provide a value of 'left', 'center', or 'right'.");
         return false;
-    }
-
-    if (font_path_default != NULL)
-    {
-        // check if the font path is valid
-        if (access(font_path_default, F_OK) == -1)
-        {
-            log_error("Invalid font path provided");
-            return false;
-        }
-    }
-
-    if (font_path_large != NULL)
-    {
-        // check if the font path is valid
-        if (access(font_path_large, F_OK) == -1)
-        {
-            log_error("Invalid font path provided");
-            return false;
-        }
-
-        state->fonts.large = TTF_OpenFont(font_path_large, SCALE1(FONT_LARGE));
-        if (state->fonts.large == NULL)
-        {
-            log_error("Failed to open large font");
-            return false;
-        }
-        TTF_SetFontStyle(state->fonts.large, TTF_STYLE_BOLD);
-    }
-    else if (font_path_default != NULL)
-    {
-        state->fonts.large = TTF_OpenFont(font_path_default, SCALE1(FONT_LARGE));
-        if (state->fonts.large == NULL)
-        {
-            log_error("Failed to open default font");
-            return false;
-        }
-        TTF_SetFontStyle(state->fonts.large, TTF_STYLE_BOLD);
-    }
-    else
-    {
-        state->fonts.large = font.large;
-    }
-
-    if (font_path_medium != NULL)
-    {
-        // check if the font path is valid
-        if (access(font_path_medium, F_OK) == -1)
-        {
-            log_error("Invalid font path provided");
-            return false;
-        }
-        state->fonts.medium = TTF_OpenFont(font_path_medium, SCALE1(FONT_MEDIUM));
-        if (state->fonts.medium == NULL)
-        {
-            log_error("Failed to open medium font");
-            return false;
-        }
-        TTF_SetFontStyle(state->fonts.medium, TTF_STYLE_BOLD);
-    }
-    else if (font_path_default != NULL)
-    {
-        state->fonts.medium = TTF_OpenFont(font_path_default, SCALE1(FONT_MEDIUM));
-        if (state->fonts.medium == NULL)
-        {
-            log_error("Failed to open default font");
-            return false;
-        }
-        TTF_SetFontStyle(state->fonts.medium, TTF_STYLE_BOLD);
-    }
-    else
-    {
-        state->fonts.medium = font.medium;
     }
 
     if (strcmp(state->format, "") == 0)
@@ -2227,6 +2238,9 @@ int main(int argc, char *argv[])
         .fonts = {
             .large = NULL,
             .medium = NULL,
+            .default_font = NULL,
+            .large_font = NULL,
+            .medium_font = NULL,
         },
         .list_state = NULL};
 
@@ -2286,6 +2300,12 @@ int main(int argc, char *argv[])
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+
+    if (!open_fonts(&state))
+    {
+        log_error("Failed to open fonts");
+        return ExitCodeError;
+    }
 
     // get initial wifi state
     int was_online = PLAT_isOnline();

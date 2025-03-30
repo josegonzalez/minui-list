@@ -93,7 +93,7 @@ minui-list --file list.json --write-value state
 
 # paths to a custom font (.otf or .ttf) can be specified
 # the order of usage is:
-#  --font-size > --font-default > built-in minui font
+#  --font-SIZE > --font-default > built-in minui font
 # if the font is missing and is loaded, this will result in an error
 
 # will use the specified font for all text sizes
