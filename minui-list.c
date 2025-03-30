@@ -1280,7 +1280,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
         {
             text_color = (SDL_Color){TRIAD_DARK_GRAY};
         }
-        if (state->list_state->items[i].features.is_header)
+        if (state->list_state->items[i].features.is_header || state->list_state->items[i].features.unselectable)
         {
             text_color = COLOR_LIGHT_TEXT;
         }
@@ -1306,14 +1306,14 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             {
                 text_color = (SDL_Color){TRIAD_LIGHT_GRAY};
             }
-            if (state->list_state->items[i].features.can_disable)
-            {
-                current_item_supports_enabling = true;
-            }
-            if (state->list_state->items[i].features.is_header)
+            if (state->list_state->items[i].features.is_header || state->list_state->items[i].features.unselectable)
             {
                 current_item_is_header = true;
                 text_color = COLOR_LIGHT_TEXT;
+            }
+            if (state->list_state->items[i].features.can_disable)
+            {
+                current_item_supports_enabling = true;
             }
 
             // Calculate pill position based on alignment
@@ -1407,8 +1407,13 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             initial_cube_x_pos = screen->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
             if (j != 0 || strlen(state->title) > 0)
             {
+                SDL_Color selected_text_color = COLOR_WHITE;
+                if (state->list_state->items[i].features.disabled || state->list_state->items[i].features.unselectable)
+                {
+                    selected_text_color = COLOR_LIGHT_TEXT;
+                }
                 SDL_Surface *selected_text;
-                selected_text = TTF_RenderUTF8_Blended(state->fonts.large, display_selected_text, COLOR_WHITE);
+                selected_text = TTF_RenderUTF8_Blended(state->fonts.large, display_selected_text, selected_text_color);
                 pos = (SDL_Rect){screen->w - selected_text->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space, pos.y, selected_text->w, selected_text->h};
                 SDL_BlitSurface(selected_text, NULL, screen, &pos);
                 SDL_FreeSurface(selected_text);
