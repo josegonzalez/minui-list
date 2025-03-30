@@ -910,7 +910,18 @@ void handle_input(struct AppState *state)
         return;
     }
 
-    if (is_confirm_button_pressed && !state->list_state->items[state->list_state->selected].features.hide_confirm)
+    bool force_hide_confirm = false;
+    if (state->list_state->items[state->list_state->selected].has_options && state->list_state->items[state->list_state->selected].initial_selected == state->list_state->items[state->list_state->selected].selected)
+    {
+        force_hide_confirm = true;
+    }
+
+    if (state->list_state->items[state->list_state->selected].features.hide_confirm)
+    {
+        force_hide_confirm = true;
+    }
+
+    if (is_confirm_button_pressed && !force_hide_confirm)
     {
         state->redraw = 0;
         state->quitting = 1;
