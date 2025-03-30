@@ -2194,7 +2194,7 @@ int write_output(struct AppState *state)
         return ExitCodeSerializeError;
     }
 
-    if (strcmp(state->write_location, "-") != 0)
+    if (strcmp(state->write_location, "-") == 0)
     {
         log_info(serialized_string);
     }
@@ -2202,8 +2202,6 @@ int write_output(struct AppState *state)
     {
         write_to_file(state->write_location, serialized_string);
     }
-
-    write_to_file(state->write_location, serialized_string);
 
     json_free_serialized_string(serialized_string);
     json_value_free(root_value);
