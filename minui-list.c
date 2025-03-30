@@ -1996,7 +1996,7 @@ int write_to_file(const char *filename, const char *text)
     if (file == NULL)
     {
         log_error("Failed to open write location");
-        return;
+        return ExitCodeError;
     }
 
     int num_elements = strlen(text) / sizeof(text[0]);
