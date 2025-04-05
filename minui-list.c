@@ -55,6 +55,12 @@ void log_info(const char *msg)
 
 struct ListItemFeature
 {
+    // the background color to use for the list
+    char background_color[1024];
+    // path to the background image to use for the list
+    char background_image[1024];
+    // whether the background image exists
+    bool background_image_exists;
     // whether the item can be disabled
     bool can_disable;
     // the confirm text to display on the confirm button
@@ -76,6 +82,10 @@ struct ListItemFeature
     // alignment of the item text ('left', 'center', 'right')
     char alignment[1024];
 
+    // whether the item has a background_color field
+    bool has_background_color;
+    // whether the item has a background_image field
+    bool has_background_image;
     // whether the item has a can_disable field
     bool has_can_disable;
     // whether the item has a confirm_text field
@@ -170,6 +180,10 @@ struct AppState
     char action_button[1024];
     // the text to display on the Action button
     char action_text[1024];
+    // the background image to display
+    char background_image[1024];
+    // the background color to display
+    char background_color[1024];
     // the button to display on the Confirm button
     char confirm_button[1024];
     // the text to display on the Confirm button
@@ -279,7 +293,7 @@ char *read_file(const char *filename)
 }
 
 // ListState_New creates a new ListState from a JSON file
-struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *title, const char *confirm_text)
+struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *title, const char *confirm_text, const char *default_background_image, const char *default_background_color)
 {
     struct ListState *state = malloc(sizeof(struct ListState));
 
@@ -372,6 +386,9 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->items[item_index].selected = 0;
                 state->items[item_index].initial_selected = 0;
                 state->items[item_index].features = (struct ListItemFeature){
+                    .background_color = "",
+                    .background_image = "",
+                    .background_image_exists = false,
                     .can_disable = false,
                     .confirm_text = "",
                     .disabled = false,
@@ -382,6 +399,8 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     .is_header = false,
                     .unselectable = false,
                     .alignment = "",
+                    .has_background_color = false,
+                    .has_background_image = false,
                     .has_can_disable = false,
                     .has_confirm_text = false,
                     .has_draw_arrows = false,
@@ -395,6 +414,16 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 };
                 strncpy(state->items[item_index].features.alignment, "left", sizeof(state->items[item_index].features.alignment) - 1);
                 strncpy(state->items[item_index].features.confirm_text, confirm_text, sizeof(state->items[item_index].features.confirm_text) - 1);
+                if (default_background_image != NULL)
+                {
+                    strncpy(state->items[item_index].features.background_image, default_background_image, sizeof(state->items[item_index].features.background_image) - 1);
+                    state->items[item_index].features.background_image_exists = access(default_background_image, F_OK) != -1;
+                }
+                if (default_background_color != NULL)
+                {
+                    strncpy(state->items[item_index].features.background_color, default_background_color, sizeof(state->items[item_index].features.background_color) - 1);
+                }
+
                 item_index++;
             }
 
@@ -466,6 +495,9 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].selected = 0;
             state->items[i].initial_selected = 0;
             state->items[i].features = (struct ListItemFeature){
+                .background_color = "",
+                .background_image = "",
+                .background_image_exists = false,
                 .can_disable = false,
                 .confirm_text = "",
                 .disabled = false,
@@ -476,6 +508,8 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .is_header = false,
                 .unselectable = false,
                 .alignment = "",
+                .has_background_color = false,
+                .has_background_image = false,
                 .has_can_disable = false,
                 .has_confirm_text = false,
                 .has_disabled = false,
@@ -489,6 +523,15 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             };
             strncpy(state->items[i].features.alignment, "left", sizeof(state->items[i].features.alignment) - 1);
             strncpy(state->items[i].features.confirm_text, confirm_text, sizeof(state->items[i].features.confirm_text) - 1);
+            if (default_background_image != NULL)
+            {
+                strncpy(state->items[i].features.background_image, default_background_image, sizeof(state->items[i].features.background_image) - 1);
+                state->items[i].features.background_image_exists = access(default_background_image, F_OK) != -1;
+            }
+            if (default_background_color != NULL)
+            {
+                strncpy(state->items[i].features.background_color, default_background_color, sizeof(state->items[i].features.background_color) - 1);
+            }
         }
     }
     else
@@ -558,6 +601,9 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].initial_selected = state->items[i].selected;
 
             state->items[i].features = (struct ListItemFeature){
+                .background_color = "",
+                .background_image = "",
+                .background_image_exists = false,
                 .can_disable = false,
                 .confirm_text = "",
                 .disabled = false,
@@ -568,6 +614,8 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .is_header = false,
                 .unselectable = false,
                 .alignment = "",
+                .has_background_color = false,
+                .has_background_image = false,
                 .has_can_disable = false,
                 .has_confirm_text = false,
                 .has_disabled = false,
@@ -586,6 +634,52 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             {
                 state->items[i].has_features = true;
                 JSON_Object *features = json_object_get_object(item, "features");
+
+                // read in the background_image from the json object
+                // if there is no background_image, set it to ""
+                // if there is a background_image, treat it as a string
+                const char *background_image = json_object_get_string(features, "background_image");
+                if (background_image != NULL)
+                {
+                    strncpy(state->items[i].features.background_image, background_image, sizeof(state->items[i].features.background_image) - 1);
+                    state->items[i].features.background_image_exists = access(background_image, F_OK) != -1;
+                    state->items[i].features.has_background_image = true;
+                }
+                else
+                {
+                    if (default_background_image != NULL)
+                    {
+                        strncpy(state->items[i].features.background_image, default_background_image, sizeof(state->items[i].features.background_image) - 1);
+                        state->items[i].features.background_image_exists = access(default_background_image, F_OK) != -1;
+                        state->items[i].features.has_background_image = true;
+                    }
+                    else
+                    {
+                        state->items[i].features.has_background_image = false;
+                    }
+                }
+
+                // read in the background_color from the json object
+                // if there is no background_color, set it to ""
+                // if there is a background_color, treat it as a string
+                const char *background_color = json_object_get_string(features, "background_color");
+                if (background_color != NULL)
+                {
+                    strncpy(state->items[i].features.background_color, background_color, sizeof(state->items[i].features.background_color) - 1);
+                    state->items[i].features.has_background_color = true;
+                }
+                else
+                {
+                    if (default_background_color != NULL)
+                    {
+                        strncpy(state->items[i].features.background_color, default_background_color, sizeof(state->items[i].features.background_color) - 1);
+                        state->items[i].features.has_background_color = true;
+                    }
+                    else
+                    {
+                        state->items[i].features.has_background_color = false;
+                    }
+                }
 
                 // read in the can_disable from the json object
                 // if there is no can_disable, set it to false
@@ -803,6 +897,15 @@ void handle_input(struct AppState *state)
 {
     // do not redraw by default
     state->redraw = 0;
+
+    if (!state->list_state->items[state->list_state->selected].features.background_image_exists && state->list_state->items[state->list_state->selected].features.background_image != NULL)
+    {
+        if (access(state->list_state->items[state->list_state->selected].features.background_image, F_OK) != -1)
+        {
+            state->list_state->items[state->list_state->selected].features.background_image_exists = true;
+            state->redraw = 1;
+        }
+    }
 
     PAD_poll();
 
@@ -1152,6 +1255,54 @@ uint32_t sdl_color_to_uint32(SDL_Color color)
 {
     return (uint32_t)((color.r << 16) + (color.g << 8) + (color.b << 0));
 }
+// scale_surface manually scales a surface to a new width and height for SDL1
+SDL_Surface *scale_surface(SDL_Surface *surface,
+                           Uint16 width, Uint16 height)
+{
+    SDL_Surface *scaled = SDL_CreateRGBSurface(surface->flags,
+                                               width,
+                                               height,
+                                               surface->format->BitsPerPixel,
+                                               surface->format->Rmask,
+                                               surface->format->Gmask,
+                                               surface->format->Bmask,
+                                               surface->format->Amask);
+
+    int bpp = surface->format->BytesPerPixel;
+    int *v = (int *)malloc(bpp * sizeof(int));
+
+    for (int x = 0; x < width; x++)
+    {
+        for (int y = 0; y < height; y++)
+        {
+            int xo1 = x * surface->w / width;
+            int xo2 = MAX((x + 1) * surface->w / width, xo1 + 1);
+            int yo1 = y * surface->h / height;
+            int yo2 = MAX((y + 1) * surface->h / height, yo1 + 1);
+            int n = (xo2 - xo1) * (yo2 - yo1);
+
+            for (int i = 0; i < bpp; i++)
+                v[i] = 0;
+
+            for (int xo = xo1; xo < xo2; xo++)
+                for (int yo = yo1; yo < yo2; yo++)
+                {
+                    Uint8 *ps =
+                        (Uint8 *)surface->pixels + yo * surface->pitch + xo * bpp;
+                    for (int i = 0; i < bpp; i++)
+                        v[i] += ps[i];
+                }
+
+            Uint8 *pd = (Uint8 *)scaled->pixels + y * scaled->pitch + x * bpp;
+            for (int i = 0; i < bpp; i++)
+                pd[i] = v[i] / n;
+        }
+    }
+
+    free(v);
+
+    return scaled;
+}
 
 // draw_screen interprets the app state and draws it to the screen
 void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
@@ -1165,6 +1316,70 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     if (state->list_state->items[state->list_state->selected].features.hide_confirm)
     {
         force_hide_confirm = true;
+    }
+
+    // render a background color
+    char hex_color[1024] = "#000000";
+    if (state->list_state->items[state->list_state->selected].features.background_color != NULL)
+    {
+        strncpy(hex_color, state->list_state->items[state->list_state->selected].features.background_color, sizeof(hex_color));
+    }
+
+    SDL_Color background_color = hex_to_sdl_color(hex_color);
+    uint32_t color = SDL_MapRGBA(screen->format, background_color.r, background_color.g, background_color.b, 255);
+    SDL_FillRect(screen, NULL, color);
+
+    // check if there is an image and it is accessible
+    if (state->list_state->items[state->list_state->selected].features.background_image != NULL)
+    {
+        SDL_Surface *surface = IMG_Load(state->list_state->items[state->list_state->selected].features.background_image);
+        if (surface)
+        {
+            int imgW = surface->w, imgH = surface->h;
+
+            // Compute scale factor
+            float scaleX = (float)(FIXED_WIDTH - 2 * PADDING) / imgW;
+            float scaleY = (float)(FIXED_HEIGHT - 2 * PADDING) / imgH;
+            float scale = (scaleX < scaleY) ? scaleX : scaleY;
+
+            // Ensure upscaling only when the image is smaller than the screen
+            if (imgW * scale < FIXED_WIDTH - 2 * PADDING && imgH * scale < FIXED_HEIGHT - 2 * PADDING)
+            {
+                scale = (scaleX > scaleY) ? scaleX : scaleY;
+            }
+
+            // Compute target dimensions
+            int dstW = imgW * scale;
+            int dstH = imgH * scale;
+
+            int dstX = (FIXED_WIDTH - dstW) / 2;
+            int dstY = (FIXED_HEIGHT - dstH) / 2;
+            if (imgW == FIXED_WIDTH && imgH == FIXED_HEIGHT)
+            {
+                dstW = FIXED_WIDTH;
+                dstH = FIXED_HEIGHT;
+                dstX = 0;
+                dstY = 0;
+            }
+
+            // Compute destination rectangle
+            SDL_Rect dstRect = {dstX, dstY, dstW, dstH};
+#ifdef USE_SDL2
+            SDL_BlitScaled(surface, NULL, screen, &dstRect);
+#else
+            if (imgW == FIXED_WIDTH && imgH == FIXED_HEIGHT)
+            {
+                SDL_BlitSurface(surface, NULL, screen, &dstRect);
+            }
+            else
+            {
+                SDL_Surface *scaled = scale_surface(surface, dstW, dstH);
+                SDL_BlitSurface(scaled, NULL, screen, &dstRect);
+                SDL_FreeSurface(scaled);
+            }
+#endif
+            SDL_FreeSurface(surface);
+        }
     }
 
     // draw the button group on the right
@@ -1627,6 +1842,8 @@ void signal_handler(int signal)
 // supports the following flags:
 // - --action-button <button> (default: "")
 // - --action-text <text> (default: "ACTION")
+// - --background-image <path> (default: empty string)
+// - --background-color <hex> (default: empty string)
 // - --confirm-button <button> (default: "A")
 // - --confirm-text <text> (default: "SELECT")
 // - --cancel-button <button> (default: "B")
@@ -1647,6 +1864,8 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     static struct option long_options[] = {
         {"action-button", required_argument, 0, 'a'},
         {"action-text", required_argument, 0, 'A'},
+        {"background-image", required_argument, 0, 'b'},
+        {"background-color", required_argument, 0, 'B'},
         {"confirm-button", required_argument, 0, 'c'},
         {"confirm-text", required_argument, 0, 'C'},
         {"cancel-button", required_argument, 0, 'd'},
@@ -1669,7 +1888,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
-    while ((opt = getopt_long(argc, argv, "a:A:c:C:d:D:e:f:F:l:L:K:M:t:T:w:W:U", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:t:T:w:W:U", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -1678,6 +1897,12 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             break;
         case 'A':
             strncpy(state->action_text, optarg, sizeof(state->action_text) - 1);
+            break;
+        case 'b':
+            strncpy(state->background_image, optarg, sizeof(state->background_image));
+            break;
+        case 'B':
+            strncpy(state->background_color, optarg, sizeof(state->background_color));
             break;
         case 'c':
             strncpy(state->confirm_button, optarg, sizeof(state->confirm_button) - 1);
@@ -2214,6 +2439,8 @@ int main(int argc, char *argv[])
     // Initialize app state
     char default_action_button[1024] = "";
     char default_action_text[1024] = "ACTION";
+    char default_background_image[1024] = "";
+    char default_background_color[1024] = "#000000";
     char default_cancel_button[1024] = "B";
     char default_cancel_text[1024] = "BACK";
     char default_enable_button[1024] = "Y";
@@ -2244,6 +2471,8 @@ int main(int argc, char *argv[])
     // assign the default values to the app state
     strncpy(state.action_button, default_action_button, sizeof(state.action_button) - 1);
     strncpy(state.action_text, default_action_text, sizeof(state.action_text) - 1);
+    strncpy(state.background_image, default_background_image, sizeof(state.background_image));
+    strncpy(state.background_color, default_background_color, sizeof(state.background_color));
     strncpy(state.cancel_button, default_cancel_button, sizeof(state.cancel_button) - 1);
     strncpy(state.cancel_text, default_cancel_text, sizeof(state.cancel_text) - 1);
     strncpy(state.confirm_button, default_confirm_button, sizeof(state.confirm_button) - 1);
@@ -2263,7 +2492,7 @@ int main(int argc, char *argv[])
         return ExitCodeError;
     }
 
-    state.list_state = ListState_New(state.file, state.format, state.item_key, state.title, state.confirm_text);
+    state.list_state = ListState_New(state.file, state.format, state.item_key, state.title, state.confirm_text, state.background_image, state.background_color);
     if (state.list_state == NULL)
     {
         log_error("Failed to create list state");
