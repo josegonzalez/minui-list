@@ -44,7 +44,13 @@ output=$(minui-list --file list.json)
 # you can also specify a location to write to
 # the internal minui sdk sometimes writes to stdout
 # depending on platform, so this may be useful
-minui-list --write-location file.txt
+minui-list --file list.json --write-location file.txt
+
+# background colors and images can be set
+# the flags provide defaults, but they can be overriden
+# for specific entries via json
+minui-list --file list.json --background-color "#ababab"
+minui-list --file list.json --background-image "full/path/to/image.png"
 
 # specify a title for the list page
 # by default, the title is empty
@@ -188,6 +194,8 @@ Properties:
 - options: (optional, type: `[]string`, default: `[]`) a list of strings to display as options. The arrow keys can be used to change the selected option, and the confirm button will be hidden if the currently selected option is the same as the default selected option.
 - selected: (optional, type: `integer`, default: `0`) the default selected option
 - features.alignment: (optional, type: `string`, default: `left`) text alignment: 'left', 'center', or 'right'
+- features.background_color: (optional, type: `string`, default: `#000000`) a hexadecimal color
+- features.background_image: (optional, type: `string`, default: empty string) a full path to a background image
 - features.can_disable: (optional, type: `boolean`, default: `false`) whether or not an option can be enabled or disabled
 - features.confirm_text: (optional, type: `string`, default: ``) text to use to override the default confirm text for the entry
 - features.disabled: (optional, type: `boolean`, default: `false`) whether the field shows up as enabled or disabled
