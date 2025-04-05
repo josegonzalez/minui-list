@@ -1659,7 +1659,6 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"font-medium", required_argument, 0, 'M'},
         {"format", required_argument, 0, 'F'},
         {"item-key", required_argument, 0, 'i'},
-        {"header", required_argument, 0, 'H'},
         {"title", required_argument, 0, 't'},
         {"title-alignment", required_argument, 0, 'T'},
         {"write-location", required_argument, 0, 'w'},
@@ -1667,7 +1666,6 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {0, 0, 0, 0}};
 
     int opt;
-    char *header_arg = NULL;
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
@@ -1711,9 +1709,6 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'i':
             strncpy(state->item_key, optarg, sizeof(state->item_key) - 1);
             break;
-        case 'H':
-            header_arg = optarg;
-            break;
         case 't':
             strncpy(state->title, optarg, sizeof(state->title) - 1);
             break;
@@ -1735,18 +1730,6 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         default:
             return false;
         }
-    }
-
-    // If we already have a title, don't overwrite it with the --header argument. Log an error and return false if both are provided
-    if (header_arg != NULL && strlen(state->title) > 0)
-    {
-        log_error("Both --header and --title arguments provided. Please use only one.");
-        return false;
-    }
-    else if (header_arg != NULL)
-    {
-        // --header was used instead of --title
-        log_error("WARNING: The --header flag has been replaced by --title. Please use --title instead.");
     }
 
     // validate title alignment

@@ -46,7 +46,7 @@ output=$(minui-list --file list.json)
 # depending on platform, so this may be useful
 minui-list --write-location file.txt
 
-# specify a title for the list page (replaces --header in previous versions)
+# specify a title for the list page
 # by default, the title is empty
 minui-list --file list.json --title "Some Title"
 
