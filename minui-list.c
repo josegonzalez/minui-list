@@ -1647,29 +1647,29 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     static struct option long_options[] = {
         {"action-button", required_argument, 0, 'a'},
         {"action-text", required_argument, 0, 'A'},
-        {"confirm-button", required_argument, 0, 'b'},
-        {"confirm-text", required_argument, 0, 'c'},
-        {"cancel-button", required_argument, 0, 'B'},
-        {"cancel-text", required_argument, 0, 'C'},
+        {"confirm-button", required_argument, 0, 'c'},
+        {"confirm-text", required_argument, 0, 'C'},
+        {"cancel-button", required_argument, 0, 'd'},
+        {"cancel-text", required_argument, 0, 'D'},
         {"enable-button", required_argument, 0, 'e'},
-        {"disable-auto-sleep", no_argument, 0, 'd'},
         {"file", required_argument, 0, 'f'},
-        {"font-default", required_argument, 0, 'D'},
+        {"font-default", required_argument, 0, 'l'},
         {"font-large", required_argument, 0, 'L'},
         {"font-medium", required_argument, 0, 'M'},
         {"format", required_argument, 0, 'F'},
-        {"item-key", required_argument, 0, 'i'},
+        {"item-key", required_argument, 0, 'K'},
         {"title", required_argument, 0, 't'},
         {"title-alignment", required_argument, 0, 'T'},
         {"write-location", required_argument, 0, 'w'},
         {"write-value", required_argument, 0, 'W'},
+        {"disable-auto-sleep", no_argument, 0, 'U'},
         {0, 0, 0, 0}};
 
     int opt;
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
-    while ((opt = getopt_long(argc, argv, "a:A:b:c:B:C:dD:e:f:F:i:H:t:T:L:M:s:w:", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:c:C:d:D:e:f:F:l:L:K:M:t:T:w:W:U", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -1679,26 +1679,20 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'A':
             strncpy(state->action_text, optarg, sizeof(state->action_text) - 1);
             break;
-        case 'b':
+        case 'c':
             strncpy(state->confirm_button, optarg, sizeof(state->confirm_button) - 1);
             break;
-        case 'B':
+        case 'C':
             strncpy(state->cancel_button, optarg, sizeof(state->cancel_button) - 1);
             break;
-        case 'c':
+        case 'd':
             strncpy(state->confirm_text, optarg, sizeof(state->confirm_text) - 1);
             break;
-        case 'C':
+        case 'D':
             strncpy(state->cancel_text, optarg, sizeof(state->cancel_text) - 1);
             break;
         case 'e':
             strncpy(state->enable_button, optarg, sizeof(state->enable_button) - 1);
-            break;
-        case 'd':
-            state->disable_auto_sleep = true;
-            break;
-        case 'D':
-            strncpy(state->fonts.default_font, optarg, sizeof(state->fonts.default_font) - 1);
             break;
         case 'f':
             strncpy(state->file, optarg, sizeof(state->file) - 1);
@@ -1706,7 +1700,16 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'F':
             strncpy(state->format, optarg, sizeof(state->format) - 1);
             break;
-        case 'i':
+        case 'l':
+            strncpy(state->fonts.default_font, optarg, sizeof(state->fonts.default_font) - 1);
+            break;
+        case 'L':
+            strncpy(state->fonts.large_font, optarg, sizeof(state->fonts.large_font) - 1);
+            break;
+        case 'M':
+            strncpy(state->fonts.medium_font, optarg, sizeof(state->fonts.medium_font) - 1);
+            break;
+        case 'K':
             strncpy(state->item_key, optarg, sizeof(state->item_key) - 1);
             break;
         case 't':
@@ -1715,17 +1718,14 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'T':
             strncpy(state->title_alignment, optarg, sizeof(state->title_alignment) - 1);
             break;
-        case 'L':
-            strncpy(state->fonts.large_font, optarg, sizeof(state->fonts.large_font) - 1);
-            break;
-        case 'M':
-            strncpy(state->fonts.medium_font, optarg, sizeof(state->fonts.medium_font) - 1);
-            break;
         case 'w':
             strncpy(state->write_location, optarg, sizeof(state->write_location) - 1);
             break;
         case 'W':
             strncpy(state->write_value, optarg, sizeof(state->write_value) - 1);
+            break;
+        case 'U':
+            state->disable_auto_sleep = true;
             break;
         default:
             return false;
