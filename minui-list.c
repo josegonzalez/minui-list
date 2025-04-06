@@ -1342,20 +1342,9 @@ SDL_Surface *scale_surface(SDL_Surface *surface,
     return scaled;
 }
 
-// draw_screen interprets the app state and draws it to the screen
-void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
+// draw_background draws the background of the list
+bool draw_background(SDL_Surface *screen, struct AppState *state)
 {
-    bool force_hide_confirm = false;
-    if (state->list_state->items[state->list_state->selected].has_options && state->list_state->items[state->list_state->selected].initial_selected == state->list_state->items[state->list_state->selected].selected)
-    {
-        force_hide_confirm = true;
-    }
-
-    if (state->list_state->items[state->list_state->selected].features.hide_confirm)
-    {
-        force_hide_confirm = true;
-    }
-
     // render a background color
     char hex_color[1024] = "#000000";
     if (state->list_state->items[state->list_state->selected].features.background_color != NULL)
@@ -1424,6 +1413,23 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
 #endif
             SDL_FreeSurface(surface);
         }
+    }
+
+    return should_draw_background_image;
+}
+
+// draw_screen interprets the app state and draws it to the screen
+void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool should_draw_background_image)
+{
+    bool force_hide_confirm = false;
+    if (state->list_state->items[state->list_state->selected].has_options && state->list_state->items[state->list_state->selected].initial_selected == state->list_state->items[state->list_state->selected].selected)
+    {
+        force_hide_confirm = true;
+    }
+
+    if (state->list_state->items[state->list_state->selected].features.hide_confirm)
+    {
+        force_hide_confirm = true;
     }
 
     // draw the button group on the right
@@ -2674,6 +2680,7 @@ int main(int argc, char *argv[])
 
             // draw the hardware information in the top-right
             int ow = GFX_blitHardwareGroup(screen, state.show_brightness_setting);
+            bool should_draw_background_image = draw_background(screen, &state);
 
             // draw the setting hints
             if (state.show_brightness_setting)
@@ -2682,7 +2689,7 @@ int main(int argc, char *argv[])
             }
 
             // your draw logic goes here
-            draw_screen(screen, &state, ow);
+            draw_screen(screen, &state, ow, should_draw_background_image);
 
             // Takes the screen buffer and displays it on the screen
             GFX_flip(screen);
