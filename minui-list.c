@@ -2651,6 +2651,11 @@ int main(int argc, char *argv[])
         // handle turning the on/off screen on/off
         // as well as general power management
         PWR_update(&state.redraw, NULL, NULL, NULL);
+        bool power_redraw = false;
+        if (state.redraw)
+        {
+            power_redraw = true;
+        }
 
         // check if the device is on wifi
         // redraw if the wifi state changed
@@ -2670,6 +2675,12 @@ int main(int argc, char *argv[])
         {
             state.redraw = 1;
             was_ever_drawn = 1;
+        }
+
+        // force a redraw if the power state changed
+        if (power_redraw)
+        {
+            state.redraw = 1;
         }
 
         // redraw the screen if there has been a change
