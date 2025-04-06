@@ -1367,8 +1367,14 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     uint32_t color = SDL_MapRGBA(screen->format, background_color.r, background_color.g, background_color.b, 255);
     SDL_FillRect(screen, NULL, color);
 
+    bool should_draw_background_image = false;
+    if (state->list_state->items[state->list_state->selected].features.background_image_exists && access(state->list_state->items[state->list_state->selected].features.background_image, F_OK) != -1)
+    {
+        should_draw_background_image = true;
+    }
+
     // check if there is an image and it is accessible
-    if (state->list_state->items[state->list_state->selected].features.background_image_exists)
+    if (should_draw_background_image)
     {
         SDL_Surface *surface = IMG_Load(state->list_state->items[state->list_state->selected].features.background_image);
         if (surface)
@@ -1439,7 +1445,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     }
 
     // if there is a title specified, compute the space needed for it
-    int has_top_margin = 0;
+    int initial_list_y_padding = 0;
     if (strlen(state->title) > 0)
     {
         // Truncate title to avoid battery/wifi icon interference
@@ -1468,15 +1474,42 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             title_x_pos = SCALE1(PADDING + BUTTON_PADDING);
         }
 
+        initial_list_y_padding = PILL_SIZE;
+        if (should_draw_background_image)
+        {
+            int pill_width = MIN(title_available_width, title_width);
+            // Calculate pill position based on alignment
+            int pill_x_pos;
+            if (strcmp(title_alignment, "center") == 0)
+            {
+                pill_x_pos = (screen->w - pill_width) / 2;
+            }
+            else if (strcmp(title_alignment, "right") == 0)
+            {
+                pill_x_pos = screen->w - pill_width - SCALE1(PADDING);
+            }
+            else // left (default)
+            {
+                pill_x_pos = SCALE1(PADDING);
+            }
+
+            GFX_blitPill(ASSET_BLACK_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING), pill_width, SCALE1(PILL_SIZE)});
+
+            initial_list_y_padding = PILL_SIZE + (PILL_SIZE / 2);
+        }
+
         // draw the title
         SDL_Color text_color = COLOR_GRAY;
+        if (should_draw_background_image)
+        {
+            text_color = COLOR_WHITE;
+        }
         SDL_Surface *text = TTF_RenderUTF8_Blended(state->fonts.medium, truncated_title_text, text_color);
         SDL_Rect pos = {
             title_x_pos,
             SCALE1(PADDING + 4),
             text->w,
             text->h};
-        has_top_margin = 1;
         SDL_BlitSurface(text, NULL, screen, &pos);
         SDL_FreeSurface(text);
     }
@@ -1614,10 +1647,10 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
 
             if (strcmp(display_selected_text, "") != 0)
             {
-                GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + ((j + has_top_margin) * PILL_SIZE)), screen->w - SCALE1(PADDING + BUTTON_MARGIN), SCALE1(PILL_SIZE)});
+                GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding), screen->w - SCALE1(PADDING + BUTTON_MARGIN), SCALE1(PILL_SIZE)});
             }
 
-            GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + ((j + has_top_margin) * PILL_SIZE)), pill_width, SCALE1(PILL_SIZE)});
+            GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding), pill_width, SCALE1(PILL_SIZE)});
         }
 
         SDL_Surface *text;
@@ -1625,17 +1658,21 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
 
         // Calculate text position based on alignment
         int text_x_pos;
+        int shadow_x_pos;
         if (strcmp(alignment, "center") == 0)
         {
             text_x_pos = (screen->w - text->w - color_box_space) / 2;
+            shadow_x_pos = text_x_pos - 2;
         }
         else if (strcmp(alignment, "right") == 0)
         {
             text_x_pos = screen->w - text->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
+            shadow_x_pos = screen->w - text->w - SCALE1(2 + PADDING + BUTTON_PADDING) - color_box_space;
         }
         else // left (default)
         {
             text_x_pos = SCALE1(PADDING + BUTTON_PADDING);
+            shadow_x_pos = SCALE1(2 + PADDING + BUTTON_PADDING);
         }
 
         // Adjust for the pill position in the top row without title
@@ -1657,15 +1694,31 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
 
         SDL_Rect pos = {
             text_x_pos,
-            SCALE1(PADDING + ((i - state->list_state->first_visible + has_top_margin) * PILL_SIZE) + 4),
+            SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 4),
             text->w,
             text->h};
+
+        // draw the text as a black shadow
+        if (should_draw_background_image && j != selected_row)
+        {
+            // COLOR_BLACK
+            SDL_Surface *accent_text;
+            accent_text = TTF_RenderUTF8_Blended(state->fonts.large, truncated_display_text, COLOR_BLACK);
+            SDL_Rect accent_pos = {
+                shadow_x_pos,
+                SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 4 + 2),
+                accent_text->w,
+                accent_text->h};
+            SDL_BlitSurface(accent_text, NULL, screen, &accent_pos);
+            SDL_FreeSurface(accent_text);
+        }
+
         SDL_BlitSurface(text, NULL, screen, &pos);
         SDL_FreeSurface(text);
 
         int initial_cube_x_pos = text_x_pos + text->w;
 
-        // draw the selected text
+        // draw the selected option text
         if (strcmp(display_selected_text, "") != 0)
         {
             initial_cube_x_pos = screen->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
@@ -1695,14 +1748,14 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
             uint32_t outline_color = sdl_color_to_uint32(text_color);
             SDL_Rect outline_rect = {
                 initial_cube_x_pos + SCALE1(PADDING),
-                SCALE1(PADDING + ((i - state->list_state->first_visible + has_top_margin) * PILL_SIZE) + 5), color_placeholder_height,
+                SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 5), color_placeholder_height,
                 color_placeholder_height};
             SDL_FillRect(screen, &(SDL_Rect){outline_rect.x, outline_rect.y, outline_rect.w, outline_rect.h}, outline_color);
 
             // Draw color cube
             SDL_Rect color_rect = {
                 initial_cube_x_pos + SCALE1(PADDING) + 2,
-                SCALE1(PADDING + ((i - state->list_state->first_visible + has_top_margin) * PILL_SIZE) + 5) + 2, color_placeholder_height - 4,
+                SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 5) + 2, color_placeholder_height - 4,
                 color_placeholder_height - 4};
             SDL_FillRect(screen, &(SDL_Rect){color_rect.x, color_rect.y, color_rect.w, color_rect.h}, color);
         }
