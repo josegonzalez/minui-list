@@ -417,7 +417,10 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 if (default_background_image != NULL)
                 {
                     strncpy(state->items[item_index].features.background_image, default_background_image, sizeof(state->items[item_index].features.background_image) - 1);
-                    state->items[item_index].features.background_image_exists = access(default_background_image, F_OK) != -1;
+                    if (access(default_background_image, F_OK) != -1)
+                    {
+                        state->items[item_index].features.background_image_exists = true;
+                    }
                 }
                 if (default_background_color != NULL)
                 {
@@ -526,7 +529,10 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             if (default_background_image != NULL)
             {
                 strncpy(state->items[i].features.background_image, default_background_image, sizeof(state->items[i].features.background_image) - 1);
-                state->items[i].features.background_image_exists = access(default_background_image, F_OK) != -1;
+                if (access(default_background_image, F_OK) != -1)
+                {
+                    state->items[i].features.background_image_exists = true;
+                }
             }
             if (default_background_color != NULL)
             {
@@ -642,7 +648,10 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 if (background_image != NULL)
                 {
                     strncpy(state->items[i].features.background_image, background_image, sizeof(state->items[i].features.background_image) - 1);
-                    state->items[i].features.background_image_exists = access(background_image, F_OK) != -1;
+                    if (access(background_image, F_OK) != -1)
+                    {
+                        state->items[i].features.background_image_exists = true;
+                    }
                     state->items[i].features.has_background_image = true;
                 }
                 else
@@ -650,7 +659,10 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     if (default_background_image != NULL)
                     {
                         strncpy(state->items[i].features.background_image, default_background_image, sizeof(state->items[i].features.background_image) - 1);
-                        state->items[i].features.background_image_exists = access(default_background_image, F_OK) != -1;
+                        if (access(default_background_image, F_OK) != -1)
+                        {
+                            state->items[i].features.background_image_exists = true;
+                        }
                         state->items[i].features.has_background_image = true;
                     }
                     else
@@ -878,6 +890,32 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                         strncpy(state->items[i].features.confirm_text, confirm_text, sizeof(state->items[i].features.confirm_text) - 1);
                         state->items[i].features.has_confirm_text = true;
                     }
+                }
+            }
+            else
+            {
+                if (default_background_image != NULL)
+                {
+                    strncpy(state->items[i].features.background_image, default_background_image, sizeof(state->items[i].features.background_image) - 1);
+                    if (access(default_background_image, F_OK) != -1)
+                    {
+                        state->items[i].features.background_image_exists = true;
+                    }
+                    state->items[i].features.has_background_image = true;
+                }
+                else
+                {
+                    state->items[i].features.has_background_image = false;
+                }
+
+                if (default_background_color != NULL)
+                {
+                    strncpy(state->items[i].features.background_color, default_background_color, sizeof(state->items[i].features.background_color) - 1);
+                    state->items[i].features.has_background_color = true;
+                }
+                else
+                {
+                    state->items[i].features.has_background_color = false;
                 }
             }
         }
@@ -1330,7 +1368,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow)
     SDL_FillRect(screen, NULL, color);
 
     // check if there is an image and it is accessible
-    if (state->list_state->items[state->list_state->selected].features.background_image != NULL)
+    if (state->list_state->items[state->list_state->selected].features.background_image_exists)
     {
         SDL_Surface *surface = IMG_Load(state->list_state->items[state->list_state->selected].features.background_image);
         if (surface)
