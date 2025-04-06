@@ -174,6 +174,8 @@ struct AppState
     int quitting;
     // whether the screen needs to be redrawn
     int redraw;
+    // whether to show the hardware group
+    int show_hardware_group;
     // whether to show the brightness or hardware state
     int show_brightness_setting;
     // the button to display on the Action button
@@ -1951,6 +1953,7 @@ void signal_handler(int signal)
 // - --font-large <path> (default: empty string)
 // - --font-medium <path> (default: empty string)
 // - --format <format> (default: "json")
+// - --hide-hardware-group (default: false)
 // - --title <title> (default: empty string)
 // - --title-alignment <alignment> (default: "left")
 // - --item-key <key> (default: "items")
@@ -1973,6 +1976,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"font-large", required_argument, 0, 'L'},
         {"font-medium", required_argument, 0, 'M'},
         {"format", required_argument, 0, 'F'},
+        {"hide-hardware-group", no_argument, 0, 'H'},
         {"item-key", required_argument, 0, 'K'},
         {"title", required_argument, 0, 't'},
         {"title-alignment", required_argument, 0, 'T'},
@@ -1985,7 +1989,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
-    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:t:T:w:W:U", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:t:T:w:W:UH", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -2021,6 +2025,9 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             break;
         case 'F':
             strncpy(state->format, optarg, sizeof(state->format) - 1);
+            break;
+        case 'H':
+            state->show_hardware_group = 0;
             break;
         case 'l':
             strncpy(state->fonts.default_font, optarg, sizeof(state->fonts.default_font) - 1);
@@ -2554,6 +2561,7 @@ int main(int argc, char *argv[])
         .exit_code = ExitCodeSuccess,
         .quitting = 0,
         .redraw = 1,
+        .show_hardware_group = 1,
         .show_brightness_setting = 0,
         .disable_auto_sleep = false,
         .fonts = {
@@ -2689,14 +2697,23 @@ int main(int argc, char *argv[])
             // clear the screen at the beginning of each loop
             GFX_clear(screen);
 
-            // draw the hardware information in the top-right
-            int ow = GFX_blitHardwareGroup(screen, state.show_brightness_setting);
             bool should_draw_background_image = draw_background(screen, &state);
 
-            // draw the setting hints
-            if (state.show_brightness_setting)
+            int ow = 0;
+            if (state.show_hardware_group)
             {
-                GFX_blitHardwareHints(screen, state.show_brightness_setting);
+                // draw the hardware information in the top-right
+                ow = GFX_blitHardwareGroup(screen, state.show_brightness_setting);
+
+                // draw the setting hints
+                if (state.show_brightness_setting && !GetHDMI())
+                {
+                    GFX_blitHardwareHints(screen, state.show_brightness_setting);
+                }
+                else
+                {
+                    GFX_blitButtonGroup((char *[]){BTN_SLEEP == BTN_POWER ? "POWER" : "MENU", "SLEEP", NULL}, 0, screen, 0);
+                }
             }
 
             // your draw logic goes here
