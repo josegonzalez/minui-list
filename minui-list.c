@@ -1908,10 +1908,10 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             strncpy(state->confirm_button, optarg, sizeof(state->confirm_button) - 1);
             break;
         case 'C':
-            strncpy(state->cancel_button, optarg, sizeof(state->cancel_button) - 1);
+            strncpy(state->confirm_text, optarg, sizeof(state->confirm_text) - 1);
             break;
         case 'd':
-            strncpy(state->confirm_text, optarg, sizeof(state->confirm_text) - 1);
+            strncpy(state->cancel_button, optarg, sizeof(state->cancel_button) - 1);
             break;
         case 'D':
             strncpy(state->cancel_text, optarg, sizeof(state->cancel_text) - 1);
