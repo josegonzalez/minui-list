@@ -1183,9 +1183,32 @@ void handle_input(struct AppState *state)
         else
         {
             state->list_state->selected -= max_row_count;
+            if (state->list_state->selected < 0)
+            {
+                state->list_state->selected = 0;
+            }
+
             while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
             {
                 state->list_state->selected -= 1;
+                if (state->list_state->selected < 0)
+                {
+                    state->list_state->selected = 0;
+                    break;
+                }
+            }
+
+            if (state->list_state->selected == 0)
+            {
+                while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
+                {
+                    state->list_state->selected += 1;
+                    if (state->list_state->selected >= state->list_state->item_count)
+                    {
+                        state->list_state->selected = state->list_state->item_count - 1;
+                        break;
+                    }
+                }
             }
 
             if (state->list_state->selected < 0)
