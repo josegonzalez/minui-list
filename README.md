@@ -119,6 +119,7 @@ minui-list --file list.json --font-default full/path/to/font.otf --font-small pa
 
 # hardware hints (power/wifi) are shown by default
 # but can be hidden by a flag
+# note that the hardware hints are hidden if x/y buttons are displayed
 minui-list --file list.json --hide-hardware-group
 
 # minui-list will auto-sleep like the normal minui menu by default
