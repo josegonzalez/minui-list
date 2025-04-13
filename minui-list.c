@@ -218,6 +218,29 @@ struct AppState
     struct ListState *list_state;
 };
 
+bool has_left_button_group(struct AppState *app_state, struct ListState *list_state)
+{
+    bool is_action_hidden = false;
+    bool is_enable_hidden = false;
+
+    if (strcmp(app_state->action_button, "") == 0 || list_state->items[list_state->selected].features.hide_action)
+    {
+        is_action_hidden = true;
+    }
+
+    if (strcmp(app_state->enable_button, "") == 0 || !list_state->items[list_state->selected].features.can_disable)
+    {
+        is_enable_hidden = true;
+    }
+
+    if (is_action_hidden && is_enable_hidden)
+    {
+        return false;
+    }
+
+    return true;
+}
+
 char *read_stdin()
 {
     // Read all of stdin into a string
@@ -295,12 +318,16 @@ char *read_file(const char *filename)
 }
 
 // ListState_New creates a new ListState from a JSON file
-struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *title, const char *confirm_text, const char *default_background_image, const char *default_background_color)
+struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *title, const char *confirm_text, const char *default_background_image, const char *default_background_color, bool show_hardware_group, struct AppState *app_state)
 {
     struct ListState *state = malloc(sizeof(struct ListState));
 
     int max_row_count = MAIN_ROW_COUNT;
     if (strlen(title) > 0)
+    {
+        max_row_count -= 1;
+    }
+    if (show_hardware_group)
     {
         max_row_count -= 1;
     }
@@ -923,9 +950,15 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         }
     }
 
-    state->last_visible = (item_count < max_row_count) ? item_count : max_row_count;
-    state->first_visible = 0;
     state->selected = 0;
+
+    if (!show_hardware_group && has_left_button_group(app_state, state))
+    {
+        max_row_count -= 1;
+    }
+
+    state->first_visible = 0;
+    state->last_visible = (item_count < max_row_count) ? item_count : max_row_count;
     state->item_count = item_count;
 
     json_value_free(root_value);
@@ -2560,29 +2593,6 @@ int write_output(struct AppState *state)
     return state->exit_code;
 }
 
-bool has_left_button_group(struct AppState *state)
-{
-    bool is_action_hidden = false;
-    bool is_enable_hidden = false;
-
-    if (strcmp(state->action_button, "") == 0 || state->list_state->items[state->list_state->selected].features.hide_action)
-    {
-        is_action_hidden = true;
-    }
-
-    if (strcmp(state->enable_button, "") == 0 || !state->list_state->items[state->list_state->selected].features.can_disable)
-    {
-        is_enable_hidden = true;
-    }
-
-    if (is_action_hidden && is_enable_hidden)
-    {
-        return false;
-    }
-
-    return true;
-}
-
 // main is the entry point for the app
 int main(int argc, char *argv[])
 {
@@ -2643,7 +2653,7 @@ int main(int argc, char *argv[])
         return ExitCodeError;
     }
 
-    state.list_state = ListState_New(state.file, state.format, state.item_key, state.title, state.confirm_text, state.background_image, state.background_color);
+    state.list_state = ListState_New(state.file, state.format, state.item_key, state.title, state.confirm_text, state.background_image, state.background_color, state.show_hardware_group, &state);
     if (state.list_state == NULL)
     {
         log_error("Failed to create list state");
@@ -2751,7 +2761,7 @@ int main(int argc, char *argv[])
                 // draw the hardware information in the top-right
                 ow = GFX_blitHardwareGroup(screen, state.show_brightness_setting);
 
-                if (!has_left_button_group(&state))
+                if (!has_left_button_group(&state, state.list_state))
                 {
                     // draw the setting hints
                     if (state.show_brightness_setting && !GetHDMI())
