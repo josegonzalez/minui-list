@@ -2560,6 +2560,29 @@ int write_output(struct AppState *state)
     return state->exit_code;
 }
 
+bool has_left_button_group(struct AppState *state)
+{
+    bool is_action_hidden = false;
+    bool is_enable_hidden = false;
+
+    if (strcmp(state->action_button, "") == 0 || state->list_state->items[state->list_state->selected].features.hide_action)
+    {
+        is_action_hidden = true;
+    }
+
+    if (strcmp(state->enable_button, "") == 0 || !state->list_state->items[state->list_state->selected].features.can_disable)
+    {
+        is_enable_hidden = true;
+    }
+
+    if (is_action_hidden && is_enable_hidden)
+    {
+        return false;
+    }
+
+    return true;
+}
+
 // main is the entry point for the app
 int main(int argc, char *argv[])
 {
@@ -2728,14 +2751,17 @@ int main(int argc, char *argv[])
                 // draw the hardware information in the top-right
                 ow = GFX_blitHardwareGroup(screen, state.show_brightness_setting);
 
-                // draw the setting hints
-                if (state.show_brightness_setting && !GetHDMI())
+                if (!has_left_button_group(&state))
                 {
-                    GFX_blitHardwareHints(screen, state.show_brightness_setting);
-                }
-                else
-                {
-                    GFX_blitButtonGroup((char *[]){BTN_SLEEP == BTN_POWER ? "POWER" : "MENU", "SLEEP", NULL}, 0, screen, 0);
+                    // draw the setting hints
+                    if (state.show_brightness_setting && !GetHDMI())
+                    {
+                        GFX_blitHardwareHints(screen, state.show_brightness_setting);
+                    }
+                    else
+                    {
+                        GFX_blitButtonGroup((char *[]){BTN_SLEEP == BTN_POWER ? "POWER" : "MENU", "SLEEP", NULL}, 0, screen, 0);
+                    }
                 }
             }
 
