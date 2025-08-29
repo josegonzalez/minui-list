@@ -86,7 +86,7 @@ jobs:
           echo "filename=$filename" >> $GITHUB_OUTPUT
 
       - name: Attest Build Provenance
-        uses: actions/attest-build-provenance@v2.4.0
+        uses: actions/attest-build-provenance@v3.0.0
         with:
           subject-path: "${{ steps.binary.outputs.filename }}"
 
