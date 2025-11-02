@@ -7,6 +7,7 @@ CURRENT_WORKING_DIR = $(shell pwd)
 PLATFORM ?= tg5040
 LD_LIBRARY_PATH = $(CURRENT_WORKING_DIR)/platform/$(PLATFORM)/lib/
 PREFIX = $(CURRENT_WORKING_DIR)/platform/$(PLATFORM)
+MINUI_VERSION ?= v20251023-0
 
 -include minui/workspace/$(PLATFORM)/platform/makefile.env
 SDL?=SDL
@@ -35,7 +36,7 @@ clean:
 	rm -rf $(PRODUCT)-$(PLATFORM)
 
 minui:
-	git clone https://github.com/shauninman/MinUI minui
+	git clone --branch $(MINUI_VERSION) https://github.com/shauninman/MinUI minui
 
 platform/$(PLATFORM)/lib:
 	mkdir -p platform/$(PLATFORM)/lib
