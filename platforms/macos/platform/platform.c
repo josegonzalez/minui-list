@@ -40,10 +40,21 @@ int GetMute(void) { return 0; }
 
 ///////////////////////////////
 
+// macOS event filter to handle Cmd+Q (SDL_QUIT)
+static int macOS_eventFilter(void* userdata, SDL_Event* event) {
+	if (event->type == SDL_QUIT) {
+		exit(0);
+	}
+	return 1; // allow all other events
+}
+
 static SDL_Joystick *joystick;
 void PLAT_initInput(void) {
 	SDL_InitSubSystem(SDL_INIT_JOYSTICK);
 	joystick = SDL_JoystickOpen(0);
+
+	// Add event filter to handle Cmd+Q on macOS
+	SDL_AddEventWatch(macOS_eventFilter, NULL);
 }
 void PLAT_quitInput(void) {
 	SDL_JoystickClose(joystick);
@@ -70,19 +81,19 @@ static int device_width;
 static int device_height;
 static int device_pitch;
 static int rotate = 0;
+
+// macOS window size (4:3 aspect ratio, suitable for modern displays)
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 600
+
 SDL_Surface* PLAT_initVideo(void) {
 	SDL_InitSubSystem(SDL_INIT_VIDEO);
 	SDL_ShowCursor(0);
 
-	SDL_DisplayMode mode;
-	SDL_GetCurrentDisplayMode(0, &mode);
-	rotate = 1;
-	LOG_info("Current display mode: %ix%i (%s)\n", mode.w,mode.h, SDL_GetPixelFormatName(mode.format));
-
 	int w = FIXED_WIDTH;
 	int h = FIXED_HEIGHT;
 	int p = FIXED_PITCH;
-	vid.window   = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, h,w, SDL_WINDOW_SHOWN);
+	vid.window   = SDL_CreateWindow("minui-list", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 	vid.renderer = SDL_CreateRenderer(vid.window,-1,SDL_RENDERER_ACCELERATED|SDL_RENDERER_PRESENTVSYNC);
 
 	// SDL_RendererInfo info;
