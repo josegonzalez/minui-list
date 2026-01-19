@@ -617,7 +617,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 if (state->items[i].selected >= options_count)
                 {
                     char error_message[256];
-                    snprintf(error_message, sizeof(error_message), "Item %s has a selected option index of %d, which is greater than the number of options %d. Setting to last option.", state->items[i].name, state->items[i].selected, options_count);
+                    snprintf(error_message, sizeof(error_message), "Item %s has a selected option index of %d, which is greater than the number of options %zu. Setting to last option.", state->items[i].name, state->items[i].selected, options_count);
                     log_error(error_message);
                     state->items[i].selected = options_count - 1;
                     if (state->items[i].selected < 0)
@@ -971,7 +971,7 @@ void handle_input(struct AppState *state)
     // do not redraw by default
     state->redraw = 0;
 
-    if (!state->list_state->items[state->list_state->selected].features.background_image_exists && state->list_state->items[state->list_state->selected].features.background_image != NULL)
+    if (!state->list_state->items[state->list_state->selected].features.background_image_exists && state->list_state->items[state->list_state->selected].features.background_image[0] != '\0')
     {
         if (access(state->list_state->items[state->list_state->selected].features.background_image, F_OK) != -1)
         {
@@ -1405,7 +1405,7 @@ bool draw_background(SDL_Surface *screen, struct AppState *state)
 {
     // render a background color
     char hex_color[1024] = "#000000";
-    if (state->list_state->items[state->list_state->selected].features.background_color != NULL)
+    if (state->list_state->items[state->list_state->selected].features.background_color[0] != '\0')
     {
         strncpy(hex_color, state->list_state->items[state->list_state->selected].features.background_color, sizeof(hex_color));
     }
@@ -1519,7 +1519,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
 
         // compute the x position of the title based on the alignment
         int title_x_pos;
-        const char *title_alignment = state->title_alignment ? state->title_alignment : "left";
+        const char *title_alignment = state->title_alignment[0] != '\0' ? state->title_alignment : "left";
         if (strcmp(title_alignment, "center") == 0)
         {
             title_x_pos = (screen->w - title_width) / 2 + SCALE1(BUTTON_PADDING);
