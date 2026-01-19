@@ -40,21 +40,10 @@ int GetMute(void) { return 0; }
 
 ///////////////////////////////
 
-// macOS event filter to handle Cmd+Q (SDL_QUIT)
-static int macOS_eventFilter(void* userdata, SDL_Event* event) {
-	if (event->type == SDL_QUIT) {
-		exit(0);
-	}
-	return 1; // allow all other events
-}
-
 static SDL_Joystick *joystick;
 void PLAT_initInput(void) {
 	SDL_InitSubSystem(SDL_INIT_JOYSTICK);
 	joystick = SDL_JoystickOpen(0);
-
-	// Add event filter to handle Cmd+Q on macOS
-	SDL_AddEventWatch(macOS_eventFilter, NULL);
 }
 void PLAT_quitInput(void) {
 	SDL_JoystickClose(joystick);
@@ -85,6 +74,54 @@ static int rotate = 0;
 // macOS window size (4:3 aspect ratio, suitable for modern displays)
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
+#define CONTENT_ASPECT_RATIO (4.0 / 3.0)
+
+// Calculate centered 4:3 destination rectangle for current window size
+static SDL_Rect getContentRect(void) {
+	int win_w, win_h;
+	SDL_GetWindowSize(vid.window, &win_w, &win_h);
+
+	int dest_w, dest_h;
+	if ((double)win_w / win_h > CONTENT_ASPECT_RATIO) {
+		// Window is wider than 4:3 - pillarbox (black bars on sides)
+		dest_h = win_h;
+		dest_w = (int)(win_h * CONTENT_ASPECT_RATIO);
+	} else {
+		// Window is taller than 4:3 - letterbox (black bars top/bottom)
+		dest_w = win_w;
+		dest_h = (int)(win_w / CONTENT_ASPECT_RATIO);
+	}
+
+	SDL_Rect rect;
+	rect.x = (win_w - dest_w) / 2;
+	rect.y = (win_h - dest_h) / 2;
+	rect.w = dest_w;
+	rect.h = dest_h;
+	return rect;
+}
+
+// macOS event filter to handle Cmd+Q (SDL_QUIT) and window resize events
+static int macOS_eventFilter(void* userdata, SDL_Event* event) {
+	if (event->type == SDL_QUIT) {
+		exit(0);
+	}
+	// Handle window resize/fullscreen toggle to force redraw
+	if (event->type == SDL_WINDOWEVENT) {
+		if (event->window.event == SDL_WINDOWEVENT_RESIZED ||
+		    event->window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+		    event->window.event == SDL_WINDOWEVENT_EXPOSED) {
+			// Force a redraw with the current texture content
+			if (vid.renderer && vid.texture) {
+				SDL_SetRenderDrawColor(vid.renderer, 0, 0, 0, 255);
+				SDL_RenderClear(vid.renderer);
+				SDL_Rect content_rect = getContentRect();
+				SDL_RenderCopy(vid.renderer, vid.texture, NULL, &content_rect);
+				SDL_RenderPresent(vid.renderer);
+			}
+		}
+	}
+	return 1; // allow all other events
+}
 
 SDL_Surface* PLAT_initVideo(void) {
 	SDL_InitSubSystem(SDL_INIT_VIDEO);
@@ -115,6 +152,9 @@ SDL_Surface* PLAT_initVideo(void) {
 	device_width	= w;
 	device_height	= h;
 	device_pitch	= p;
+
+	// Add event filter to handle Cmd+Q and window resize on macOS
+	SDL_AddEventWatch(macOS_eventFilter, NULL);
 
 	return vid.screen;
 }
@@ -211,70 +251,26 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
 }
 
 void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
+	// Clear to black for letterbox/pillarbox bars
+	SDL_SetRenderDrawColor(vid.renderer, 0, 0, 0, 255);
+	SDL_RenderClear(vid.renderer);
+
+	// Get the centered 4:3 destination rectangle
+	SDL_Rect content_rect = getContentRect();
 
 	if (!vid.blit) {
-		resizeVideo(device_width,device_height,FIXED_PITCH); // !!!???
+		resizeVideo(device_width,device_height,FIXED_PITCH);
 		SDL_UpdateTexture(vid.texture,NULL,vid.screen->pixels,vid.screen->pitch);
-		if (rotate) {
-			LOG_info("rotated\n");
-			SDL_RenderCopyEx(vid.renderer,vid.texture,NULL,&(SDL_Rect){device_height,0,device_width,device_height},rotate*90,&(SDL_Point){0,0},SDL_FLIP_NONE);
-		}
-		else {
-			LOG_info("not rotated\n");
-			SDL_RenderCopy(vid.renderer, vid.texture, NULL,NULL);
-		}
+		SDL_RenderCopy(vid.renderer, vid.texture, NULL, &content_rect);
 		SDL_RenderPresent(vid.renderer);
 		return;
 	}
-
-	if (!vid.blit) resizeVideo(FIXED_WIDTH,FIXED_HEIGHT,FIXED_PITCH); // !!!???
 
 	SDL_LockTexture(vid.texture,NULL,&vid.buffer->pixels,&vid.buffer->pitch);
 	SDL_BlitSurface(vid.screen, NULL, vid.buffer, NULL);
 	SDL_UnlockTexture(vid.texture);
 
-	SDL_Rect* src_rect = NULL;
-	SDL_Rect* dst_rect = NULL;
-	SDL_Rect src_r = {0};
-	SDL_Rect dst_r = {0};
-	if (vid.blit) {
-		src_r.x = vid.blit->src_x;
-		src_r.y = vid.blit->src_y;
-		src_r.w = vid.blit->src_w;
-		src_r.h = vid.blit->src_h;
-		src_rect = &src_r;
-
-		if (vid.blit->aspect==0) { // native (or cropped?)
-			int w = vid.blit->src_w * vid.blit->scale;
-			int h = vid.blit->src_h * vid.blit->scale;
-			int x = (FIXED_WIDTH - w) / 2;
-			int y = (FIXED_HEIGHT - h) / 2;
-
-			dst_r.x = x;
-			dst_r.y = y;
-			dst_r.w = w;
-			dst_r.h = h;
-			dst_rect = &dst_r;
-		}
-		else if (vid.blit->aspect>0) { // aspect
-			int h = FIXED_HEIGHT;
-			int w = h * vid.blit->aspect;
-			if (w>FIXED_WIDTH) {
-				double ratio = 1 / vid.blit->aspect;
-				w = FIXED_WIDTH;
-				h = w * ratio;
-			}
-			int x = (FIXED_WIDTH - w) / 2;
-			int y = (FIXED_HEIGHT - h) / 2;
-
-			dst_r.x = x;
-			dst_r.y = y;
-			dst_r.w = w;
-			dst_r.h = h;
-			dst_rect = &dst_r;
-		}
-	}
-	SDL_RenderCopy(vid.renderer, vid.texture, src_rect, dst_rect);
+	SDL_RenderCopy(vid.renderer, vid.texture, NULL, &content_rect);
 	SDL_RenderPresent(vid.renderer);
 	vid.blit = NULL;
 }
