@@ -96,10 +96,49 @@ jobs:
           name: ${{ steps.binary.outputs.filename }}
           path: ${{ steps.binary.outputs.filename }}
 
+  macos:
+    name: macos
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13
+            arch: x86_64
+          - os: macos-14
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install SDL2 dependencies
+        run: brew install sdl2 sdl2_image sdl2_ttf pkg-config
+
+      - name: Build the application
+        run: PLATFORM=macos make
+
+      - name: Rename binary with architecture
+        id: binary
+        run: |
+          mv minui-list-macos minui-list-macos-${{ matrix.arch }}
+          echo "filename=minui-list-macos-${{ matrix.arch }}" >> $GITHUB_OUTPUT
+
+      - name: Attest Build Provenance
+        uses: actions/attest-build-provenance@v3.0.0
+        with:
+          subject-path: "${{ steps.binary.outputs.filename }}"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ steps.binary.outputs.filename }}
+          path: ${{ steps.binary.outputs.filename }}
+
   release:
     name: release
     runs-on: ubuntu-24.04
-    needs: build
+    needs: [build, macos]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
