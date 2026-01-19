@@ -2400,12 +2400,14 @@ int write_output(struct AppState *state)
             return state->exit_code;
         }
 
-        if (strcmp(state->write_location, "-") != 0)
+        if (strcmp(state->write_location, "-") == 0)
         {
             log_info(state->list_state->items[state->list_state->selected].name);
         }
-
-        write_to_file(state->write_location, state->list_state->items[state->list_state->selected].name);
+        else
+        {
+            write_to_file(state->write_location, state->list_state->items[state->list_state->selected].name);
+        }
         return state->exit_code;
     }
 
