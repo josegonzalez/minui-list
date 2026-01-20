@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <msettings.h>
@@ -5,6 +6,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <strings.h>
 #include <unistd.h>
 #ifdef USE_SDL2
 #include <SDL2/SDL_ttf.h>
@@ -196,6 +198,8 @@ struct AppState
     char cancel_text[1024];
     // whether to disable sleep
     bool disable_auto_sleep;
+    // whether alphabetic scroll (L1/R1 letter jumping) is enabled
+    bool alphabetic_scroll;
     // the button to display on the Enable button
     char enable_button[1024];
     // the path to the JSON file
@@ -315,6 +319,14 @@ char *read_file(const char *filename)
     contents[file_size] = '\0';
 
     return contents;
+}
+
+// compare_items_alphabetic compares ListItem structs by name (case-insensitive)
+static int compare_items_alphabetic(const void *a, const void *b)
+{
+    const struct ListItem *item_a = (const struct ListItem *)a;
+    const struct ListItem *item_b = (const struct ListItem *)b;
+    return strcasecmp(item_a->name, item_b->name);
 }
 
 // ListState_New creates a new ListState from a JSON file
@@ -494,6 +506,16 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         log_error("Failed to parse JSON file");
         free(state);
         return NULL;
+    }
+
+    // Check for alphabetic_scroll in root JSON object
+    JSON_Object *root_object = json_value_get_object(root_value);
+    if (root_object != NULL && json_object_has_value(root_object, "alphabetic_scroll"))
+    {
+        if (json_object_get_boolean(root_object, "alphabetic_scroll") == 1)
+        {
+            app_state->alphabetic_scroll = true;
+        }
     }
 
     JSON_Array *items_array;
@@ -1303,6 +1325,137 @@ void handle_input(struct AppState *state)
         }
         state->redraw = 1;
     }
+    else if (state->alphabetic_scroll && PAD_justRepeated(BTN_L1))
+    {
+        if (state->list_state->item_count > 0)
+        {
+            char current_letter = toupper((unsigned char)state->list_state->items[state->list_state->selected].name[0]);
+            int target_index = -1;
+
+            // Search backwards for first item with different letter
+            for (int i = state->list_state->selected - 1; i >= 0; i--)
+            {
+                if (state->list_state->items[i].features.is_header ||
+                    state->list_state->items[i].features.unselectable)
+                    continue;
+
+                char item_letter = toupper((unsigned char)state->list_state->items[i].name[0]);
+                if (item_letter != current_letter)
+                {
+                    // Found different letter - now find FIRST item with this letter
+                    target_index = i;
+                    for (int j = i - 1; j >= 0; j--)
+                    {
+                        if (state->list_state->items[j].features.is_header ||
+                            state->list_state->items[j].features.unselectable)
+                            continue;
+                        if (toupper((unsigned char)state->list_state->items[j].name[0]) == item_letter)
+                            target_index = j;
+                        else
+                            break;
+                    }
+                    break;
+                }
+            }
+
+            // Wrap: find last different letter from end
+            if (target_index == -1)
+            {
+                for (int i = state->list_state->item_count - 1; i >= 0; i--)
+                {
+                    if (state->list_state->items[i].features.is_header ||
+                        state->list_state->items[i].features.unselectable)
+                        continue;
+
+                    char item_letter = toupper((unsigned char)state->list_state->items[i].name[0]);
+                    if (item_letter != current_letter)
+                    {
+                        target_index = i;
+                        for (int j = i - 1; j >= 0; j--)
+                        {
+                            if (state->list_state->items[j].features.is_header ||
+                                state->list_state->items[j].features.unselectable)
+                                continue;
+                            if (toupper((unsigned char)state->list_state->items[j].name[0]) == item_letter)
+                                target_index = j;
+                            else
+                                break;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (target_index != -1 && target_index != state->list_state->selected)
+            {
+                state->list_state->selected = target_index;
+                // Update visible window
+                if (state->list_state->selected < state->list_state->first_visible)
+                {
+                    state->list_state->first_visible = state->list_state->selected;
+                    state->list_state->last_visible = state->list_state->first_visible + max_row_count;
+                    if (state->list_state->last_visible > (int)state->list_state->item_count)
+                        state->list_state->last_visible = state->list_state->item_count;
+                }
+                state->redraw = 1;
+            }
+        }
+    }
+    else if (state->alphabetic_scroll && PAD_justRepeated(BTN_R1))
+    {
+        if (state->list_state->item_count > 0)
+        {
+            char current_letter = toupper((unsigned char)state->list_state->items[state->list_state->selected].name[0]);
+            int target_index = -1;
+
+            // Search forwards for first item with different letter
+            for (int i = state->list_state->selected + 1; i < (int)state->list_state->item_count; i++)
+            {
+                if (state->list_state->items[i].features.is_header ||
+                    state->list_state->items[i].features.unselectable)
+                    continue;
+
+                char item_letter = toupper((unsigned char)state->list_state->items[i].name[0]);
+                if (item_letter != current_letter)
+                {
+                    target_index = i;
+                    break;
+                }
+            }
+
+            // Wrap: find first different letter from beginning
+            if (target_index == -1)
+            {
+                for (int i = 0; i < (int)state->list_state->item_count; i++)
+                {
+                    if (state->list_state->items[i].features.is_header ||
+                        state->list_state->items[i].features.unselectable)
+                        continue;
+
+                    char item_letter = toupper((unsigned char)state->list_state->items[i].name[0]);
+                    if (item_letter != current_letter)
+                    {
+                        target_index = i;
+                        break;
+                    }
+                }
+            }
+
+            if (target_index != -1 && target_index != state->list_state->selected)
+            {
+                state->list_state->selected = target_index;
+                // Update visible window
+                if (state->list_state->selected >= state->list_state->last_visible)
+                {
+                    state->list_state->last_visible = state->list_state->selected + 1;
+                    state->list_state->first_visible = state->list_state->last_visible - max_row_count;
+                    if (state->list_state->first_visible < 0)
+                        state->list_state->first_visible = 0;
+                }
+                state->redraw = 1;
+            }
+        }
+    }
 }
 
 // detects if a string is a hex color
@@ -2039,13 +2192,14 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"write-location", required_argument, 0, 'w'},
         {"write-value", required_argument, 0, 'W'},
         {"disable-auto-sleep", no_argument, 0, 'U'},
+        {"alphabetic-scroll", no_argument, 0, 'S'},
         {0, 0, 0, 0}};
 
     int opt;
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
-    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:t:T:w:W:UH", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:t:T:w:W:UHS", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -2111,6 +2265,9 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             break;
         case 'U':
             state->disable_auto_sleep = true;
+            break;
+        case 'S':
+            state->alphabetic_scroll = true;
             break;
         default:
             return false;
@@ -2680,6 +2837,24 @@ int main(int argc, char *argv[])
         {
             log_error("No selectable items found");
             return ExitCodeError;
+        }
+    }
+
+    // Sort items alphabetically if alphabetic_scroll is enabled
+    if (state.alphabetic_scroll && state.list_state->item_count > 0)
+    {
+        qsort(state.list_state->items,
+              state.list_state->item_count,
+              sizeof(struct ListItem),
+              compare_items_alphabetic);
+
+        // Reset selection to first selectable item after sort
+        state.list_state->selected = 0;
+        while (state.list_state->selected < (int)state.list_state->item_count &&
+               (state.list_state->items[state.list_state->selected].features.is_header ||
+                state.list_state->items[state.list_state->selected].features.unselectable))
+        {
+            state.list_state->selected++;
         }
     }
 
