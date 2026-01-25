@@ -2,6 +2,16 @@ CURRENT_WORKING_DIR = $(shell pwd)
 
 PLATFORM ?= tg5040
 MINUI_VERSION ?= v20251023-0
+NEXTUI_VERSION ?= tg5050
+
+# Determine upstream repository based on platform
+ifeq ($(PLATFORM),tg5050)
+  UPSTREAM_REPO = https://github.com/loveRetro/NextUI
+  UPSTREAM_VERSION = $(NEXTUI_VERSION)
+else
+  UPSTREAM_REPO = https://github.com/shauninman/MinUI
+  UPSTREAM_VERSION = $(MINUI_VERSION)
+endif
 
 # macOS native build configuration
 ifeq ($(PLATFORM),macos)
@@ -77,7 +87,7 @@ else
 endif
 
 minui:
-	git clone --branch $(MINUI_VERSION) https://github.com/shauninman/MinUI minui
+	git clone --branch $(UPSTREAM_VERSION) $(UPSTREAM_REPO) minui
 
 platform/$(PLATFORM)/lib:
 	mkdir -p platform/$(PLATFORM)/lib
