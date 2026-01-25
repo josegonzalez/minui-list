@@ -34,8 +34,12 @@ jobs:
           - rgb30 # (deprecated)
           # - tg3040 now merged with tg5040, so we can't build it separately
           - tg5040
+          - tg5050
           - trimuismart # (deprecated)
           - zero28
+        include:
+          - toolchain: tg5050
+            toolchain_repo: LoveRetro/tg5050-toolchain
 
     steps:
       - name: Checkout
@@ -49,7 +53,12 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Clone the union repository
-        run: git clone https://github.com/shauninman/union-${{ matrix.toolchain }}-toolchain
+        run: |
+          if [ -n "${{ matrix.toolchain_repo }}" ]; then
+            git clone https://github.com/${{ matrix.toolchain_repo }} union-${{ matrix.toolchain }}-toolchain
+          else
+            git clone https://github.com/shauninman/union-${{ matrix.toolchain }}-toolchain
+          fi
 
       - name: Move the codebase to the correct location
         run: |

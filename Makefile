@@ -2,6 +2,16 @@ CURRENT_WORKING_DIR = $(shell pwd)
 
 PLATFORM ?= tg5040
 MINUI_VERSION ?= v20251023-0
+NEXTUI_VERSION ?= tg5050
+
+# Determine upstream repository based on platform
+ifeq ($(PLATFORM),tg5050)
+  UPSTREAM_REPO = https://github.com/loveRetro/NextUI
+  UPSTREAM_VERSION = $(NEXTUI_VERSION)
+else
+  UPSTREAM_REPO = https://github.com/shauninman/MinUI
+  UPSTREAM_VERSION = $(MINUI_VERSION)
+endif
 
 # macOS native build configuration
 ifeq ($(PLATFORM),macos)
@@ -40,6 +50,13 @@ else
   CFLAGS = $(ARCH) -fomit-frame-pointer
   CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) -Ofast -std=gnu99
   FLAGS = -L$(LD_LIBRARY_PATH) -ldl -lmsettings $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
+  # tg5050 uses NextUI toolchain which installs libmsettings to /opt/nextui
+  ifeq ($(PLATFORM),tg5050)
+    INCDIR += -I/opt/nextui/include
+    FLAGS += -L/opt/nextui/lib -lGLESv2 -lmali -lsamplerate
+    CFLAGS += -DPLATFORM_NEXTUI
+    SOURCE += minui/workspace/all/common/config.c
+  endif
 endif
 
 # Build targets
@@ -77,7 +94,7 @@ else
 endif
 
 minui:
-	git clone --branch $(MINUI_VERSION) https://github.com/shauninman/MinUI minui
+	git clone --branch $(UPSTREAM_VERSION) $(UPSTREAM_REPO) minui
 
 platform/$(PLATFORM)/lib:
 	mkdir -p platform/$(PLATFORM)/lib
