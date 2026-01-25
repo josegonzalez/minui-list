@@ -50,6 +50,13 @@ else
   CFLAGS = $(ARCH) -fomit-frame-pointer
   CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) -Ofast -std=gnu99
   FLAGS = -L$(LD_LIBRARY_PATH) -ldl -lmsettings $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
+  # tg5050 uses NextUI toolchain which installs libmsettings to /opt/nextui
+  ifeq ($(PLATFORM),tg5050)
+    INCDIR += -I/opt/nextui/include
+    FLAGS += -L/opt/nextui/lib -lGLESv2 -lmali -lsamplerate
+    CFLAGS += -DPLATFORM_NEXTUI
+    SOURCE += minui/workspace/all/common/config.c
+  endif
 endif
 
 # Build targets
