@@ -79,7 +79,7 @@ jobs:
           echo "filename=$filename" >> $GITHUB_OUTPUT
 
       - name: Attest Build Provenance
-        uses: actions/attest-build-provenance@v3.1.0
+        uses: actions/attest-build-provenance@v3.2.0
         with:
           subject-path: "${{ steps.binary.outputs.filename }}"
 
@@ -118,7 +118,7 @@ jobs:
           echo "filename=minui-list-macos-${{ matrix.arch }}" >> $GITHUB_OUTPUT
 
       - name: Attest Build Provenance
-        uses: actions/attest-build-provenance@v3.1.0
+        uses: actions/attest-build-provenance@v3.2.0
         with:
           subject-path: "${{ steps.binary.outputs.filename }}"
 
