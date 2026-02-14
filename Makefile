@@ -2,7 +2,7 @@ CURRENT_WORKING_DIR = $(shell pwd)
 
 PLATFORM ?= tg5040
 MINUI_VERSION ?= v20251023-0
-NEXTUI_VERSION ?= tg5050
+NEXTUI_VERSION ?= v6.9.0
 
 # Determine upstream repository based on platform
 ifeq ($(PLATFORM),tg5050)
