@@ -52,7 +52,7 @@ else
   ifeq ($(PLATFORM),tg5050)
     INCDIR += -I/opt/nextui/include
     FLAGS += -L/opt/nextui/lib -lGLESv2 -lmali -lsamplerate
-    CFLAGS += -DPLATFORM_NEXTUI
+    CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DPLATFORM_NEXTUI
     SOURCE += minui/workspace/all/common/config.c
   else
     CFLAGS = $(ARCH) -fomit-frame-pointer
