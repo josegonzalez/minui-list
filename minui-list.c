@@ -164,11 +164,11 @@ struct Fonts
     // the medium font to use for the list
     TTF_Font *medium;
     // the path to the default font to use for the list
-    char *default_font;
+    char default_font[1024];
     // the path to the large font to use for the list
-    char *large_font;
+    char large_font[1024];
     // the path to the medium font to use for the list
-    char *medium_font;
+    char medium_font[1024];
 };
 
 // AppState holds the current state of the application
@@ -522,7 +522,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         for (size_t i = 0; i < item_count; i++)
         {
             const char *name = json_array_get_string(items_array, i);
-            state->items[i].name = name ? strdup(name) : "";
+            state->items[i].name = name ? strdup(name) : strdup("");
 
             // set defaults for the other fields
             state->items[i].has_features = false;
@@ -582,7 +582,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             JSON_Object *item = json_array_get_object(items_array, i);
 
             const char *name = json_object_get_string(item, "name");
-            state->items[i].name = name ? strdup(name) : "";
+            state->items[i].name = name ? strdup(name) : strdup("");
 
             // read in the options from the json object
             // if there are no options, set the options to an empty array
@@ -594,7 +594,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             for (size_t j = 0; j < options_count; j++)
             {
                 const char *option = json_array_get_string(options_array, j);
-                state->items[i].options[j] = option ? strdup(option) : "";
+                state->items[i].options[j] = option ? strdup(option) : strdup("");
             }
 
             if (options_count > 0)
@@ -969,6 +969,27 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
 
     json_value_free(root_value);
     return state;
+}
+
+void ListState_Free(struct ListState *state)
+{
+    if (state == NULL)
+        return;
+    if (state->items != NULL)
+    {
+        for (size_t i = 0; i < state->item_count; i++)
+        {
+            free(state->items[i].name);
+            if (state->items[i].options != NULL)
+            {
+                for (int j = 0; j < state->items[i].option_count; j++)
+                    free(state->items[i].options[j]);
+                free(state->items[i].options);
+            }
+        }
+        free(state->items);
+    }
+    free(state);
 }
 
 // handle_input interprets input events and mutates app state
@@ -1862,7 +1883,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
 
 bool open_fonts(struct AppState *state)
 {
-    if (state->fonts.default_font != NULL)
+    if (state->fonts.default_font[0] != '\0')
     {
         // check if the font path is valid
         if (access(state->fonts.default_font, F_OK) == -1)
@@ -1872,7 +1893,7 @@ bool open_fonts(struct AppState *state)
         }
     }
 
-    if (state->fonts.large_font != NULL)
+    if (state->fonts.large_font[0] != '\0')
     {
         // check if the font path is valid
         if (access(state->fonts.large_font, F_OK) == -1)
@@ -1889,7 +1910,7 @@ bool open_fonts(struct AppState *state)
         }
         TTF_SetFontStyle(state->fonts.large, TTF_STYLE_BOLD);
     }
-    else if (state->fonts.default_font != NULL)
+    else if (state->fonts.default_font[0] != '\0')
     {
         state->fonts.large = TTF_OpenFont(state->fonts.default_font, SCALE1(FONT_LARGE));
         if (state->fonts.large == NULL)
@@ -1904,7 +1925,7 @@ bool open_fonts(struct AppState *state)
         state->fonts.large = font.large;
     }
 
-    if (state->fonts.medium_font != NULL)
+    if (state->fonts.medium_font[0] != '\0')
     {
         // check if the font path is valid
         if (access(state->fonts.medium_font, F_OK) == -1)
@@ -1920,7 +1941,7 @@ bool open_fonts(struct AppState *state)
         }
         TTF_SetFontStyle(state->fonts.medium, TTF_STYLE_BOLD);
     }
-    else if (state->fonts.default_font != NULL)
+    else if (state->fonts.default_font[0] != '\0')
     {
         state->fonts.medium = TTF_OpenFont(state->fonts.default_font, SCALE1(FONT_MEDIUM));
         if (state->fonts.medium == NULL)
@@ -1936,6 +1957,20 @@ bool open_fonts(struct AppState *state)
     }
 
     return true;
+}
+
+void close_fonts(struct AppState *state)
+{
+    if (state->fonts.large != NULL && state->fonts.large != font.large)
+    {
+        TTF_CloseFont(state->fonts.large);
+        state->fonts.large = NULL;
+    }
+    if (state->fonts.medium != NULL && state->fonts.medium != font.medium)
+    {
+        TTF_CloseFont(state->fonts.medium);
+        state->fonts.medium = NULL;
+    }
 }
 
 // suppress_output suppresses stdout and stderr
@@ -2419,20 +2454,25 @@ int write_output(struct AppState *state)
     JSON_Value *root_value = json_value_init_object();
     JSON_Object *root_object = json_value_get_object(root_value);
     char *serialized_string = NULL;
+    JSON_Value *val = NULL;
+    JSON_Value *features_val = NULL;
+    int result = state->exit_code;
+
     json_object_set_number(root_object, "selected", state->list_state->selected);
 
     JSON_Array *items = json_array(json_value_init_array());
     for (int i = 0; i < state->list_state->item_count; i++)
     {
-        JSON_Value *val = json_value_init_object();
+        val = json_value_init_object();
         JSON_Object *obj = json_value_get_object(val);
 
-        JSON_Value *features_val = json_value_init_object();
+        features_val = json_value_init_object();
         JSON_Object *features = json_value_get_object(features_val);
         if (json_object_dotset_string(obj, "name", state->list_state->items[i].name) == JSONFailure)
         {
             log_error("Failed to set name");
-            return ExitCodeSerializeError;
+            result = ExitCodeSerializeError;
+            goto cleanup;
         }
 
         if (state->list_state->items[i].features.has_alignment)
@@ -2440,7 +2480,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_string(features, "alignment", state->list_state->items[i].features.alignment) == JSONFailure)
             {
                 log_error("Failed to set alignment");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2449,7 +2490,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_string(features, "confirm_text", state->list_state->items[i].features.confirm_text) == JSONFailure)
             {
                 log_error("Failed to set confirm_text");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2458,7 +2500,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_boolean(features, "can_disable", state->list_state->items[i].features.can_disable) == JSONFailure)
             {
                 log_error("Failed to set can_disable");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2467,7 +2510,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_boolean(features, "disabled", state->list_state->items[i].features.disabled))
             {
                 log_error("Failed to set enabled");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2476,7 +2520,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_boolean(features, "draw_arrows", state->list_state->items[i].features.draw_arrows))
             {
                 log_error("Failed to set draw_arrows");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2485,7 +2530,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_boolean(features, "hide_action", state->list_state->items[i].features.hide_action))
             {
                 log_error("Failed to set hide_action");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2494,7 +2540,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_boolean(features, "hide_cancel", state->list_state->items[i].features.hide_cancel))
             {
                 log_error("Failed to set hide_cancel");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2503,7 +2550,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_boolean(features, "hide_confirm", state->list_state->items[i].features.hide_confirm))
             {
                 log_error("Failed to set hide_confirm");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2512,7 +2560,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_boolean(features, "is_header", state->list_state->items[i].features.is_header))
             {
                 log_error("Failed to set is_header");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2521,7 +2570,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_boolean(features, "unselectable", state->list_state->items[i].features.unselectable))
             {
                 log_error("Failed to set unselectable");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2530,7 +2580,8 @@ int write_output(struct AppState *state)
             if (json_object_dotset_number(obj, "selected", state->list_state->items[i].selected) == JSONFailure)
             {
                 log_error("Failed to set selected");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
 
             JSON_Array *options = json_array(json_value_init_array());
@@ -2540,13 +2591,15 @@ int write_output(struct AppState *state)
                 if (json_array_append_value(options, option) == JSONFailure)
                 {
                     log_error("Failed to append option");
-                    return ExitCodeSerializeError;
+                    result = ExitCodeSerializeError;
+                    goto cleanup;
                 }
             }
             if (json_object_dotset_value(obj, "options", json_array_get_wrapping_value(options)) == JSONFailure)
             {
                 log_error("Failed to set options");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
         }
 
@@ -2557,23 +2610,33 @@ int write_output(struct AppState *state)
             if (json_object_dotset_value(obj, "features", features_value) == JSONFailure)
             {
                 log_error("Failed to set features");
-                return ExitCodeSerializeError;
+                result = ExitCodeSerializeError;
+                goto cleanup;
             }
+            features_val = NULL;
+        }
+        else
+        {
+            json_value_free(features_val);
+            features_val = NULL;
         }
 
         JSON_Value *item_value = json_object_get_wrapping_value(obj);
         if (json_array_append_value(items, item_value) == JSONFailure)
         {
             log_error("Failed to append item");
-            return ExitCodeSerializeError;
+            result = ExitCodeSerializeError;
+            goto cleanup;
         }
+        val = NULL;
     }
 
     JSON_Value *items_value = json_array_get_wrapping_value(items);
     if (json_object_dotset_value(root_object, state->item_key, items_value) == JSONFailure)
     {
         log_error("Failed to set items");
-        return ExitCodeSerializeError;
+        result = ExitCodeSerializeError;
+        goto cleanup;
     }
 
     root_value = json_object_get_wrapping_value(root_object);
@@ -2582,7 +2645,8 @@ int write_output(struct AppState *state)
     if (serialized_string == NULL)
     {
         log_error("Failed to serialize");
-        return ExitCodeSerializeError;
+        result = ExitCodeSerializeError;
+        goto cleanup;
     }
 
     if (strcmp(state->write_location, "-") == 0)
@@ -2594,10 +2658,17 @@ int write_output(struct AppState *state)
         write_to_file(state->write_location, serialized_string);
     }
 
-    json_free_serialized_string(serialized_string);
-    json_value_free(root_value);
+cleanup:
+    if (serialized_string != NULL)
+        json_free_serialized_string(serialized_string);
+    if (features_val != NULL)
+        json_value_free(features_val);
+    if (val != NULL)
+        json_value_free(val);
+    if (root_value != NULL)
+        json_value_free(root_value);
 
-    return state->exit_code;
+    return result;
 }
 
 // main is the entry point for the app
@@ -2630,9 +2701,9 @@ int main(int argc, char *argv[])
         .fonts = {
             .large = NULL,
             .medium = NULL,
-            .default_font = NULL,
-            .large_font = NULL,
-            .medium_font = NULL,
+            .default_font = "",
+            .large_font = "",
+            .medium_font = "",
         },
         .list_state = NULL};
 
@@ -2684,6 +2755,7 @@ int main(int argc, char *argv[])
         if (!has_selectable)
         {
             log_error("No selectable items found");
+            ListState_Free(state.list_state);
             return ExitCodeError;
         }
     }
@@ -2699,6 +2771,7 @@ int main(int argc, char *argv[])
     if (!open_fonts(&state))
     {
         log_error("Failed to open fonts");
+        ListState_Free(state.list_state);
         return ExitCodeError;
     }
 
@@ -2799,17 +2872,24 @@ int main(int argc, char *argv[])
 
     if (signal_exit_code)
     {
+        close_fonts(&state);
         swallow_stdout_from_function(destruct);
+        ListState_Free(state.list_state);
         return signal_exit_code;
     }
 
     int exit_code = write_output(&state);
     if (exit_code != ExitCodeSuccess)
     {
+        close_fonts(&state);
+        swallow_stdout_from_function(destruct);
+        ListState_Free(state.list_state);
         return exit_code;
     }
 
+    close_fonts(&state);
     swallow_stdout_from_function(destruct);
+    ListState_Free(state.list_state);
 
     // exit the program
     return state.exit_code;
