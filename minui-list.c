@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #ifdef USE_SDL2
 #include <SDL2/SDL_ttf.h>
@@ -1981,21 +1982,16 @@ void swallow_stdout_from_function(void (*func)(void))
     restore_output(saved_fds);
 }
 
+static volatile sig_atomic_t signal_exit_code = 0;
+
 void signal_handler(int signal)
 {
-    // if the signal is a ctrl+c, exit with code 130
     if (signal == SIGINT)
-    {
-        exit(ExitCodeKeyboardInterrupt);
-    }
+        signal_exit_code = ExitCodeKeyboardInterrupt;
     else if (signal == SIGTERM)
-    {
-        exit(ExitCodeSigterm);
-    }
+        signal_exit_code = ExitCodeSigterm;
     else
-    {
-        exit(ExitCodeError);
-    }
+        signal_exit_code = ExitCodeError;
 }
 
 // parse_arguments parses the arguments using getopt and updates the app state
@@ -2372,6 +2368,10 @@ void init()
 // destruct cleans up the app state in reverse order
 void destruct()
 {
+    static int destructed = 0;
+    if (destructed) return;
+    destructed = 1;
+
     QuitSettings();
     PWR_quit();
     PAD_quit();
@@ -2691,6 +2691,7 @@ int main(int argc, char *argv[])
     // swallow all stdout from init calls
     // MinUI will sometimes randomly log to stdout
     swallow_stdout_from_function(init);
+    atexit(destruct);
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
@@ -2713,7 +2714,7 @@ int main(int argc, char *argv[])
         PWR_disableAutosleep();
     }
 
-    while (!state.quitting)
+    while (!state.quitting && !signal_exit_code)
     {
         // start the frame to ensure GFX_sync() works
         // on devices that don't support vsync
@@ -2794,6 +2795,12 @@ int main(int argc, char *argv[])
             // when the screen is not being redrawn
             GFX_sync();
         }
+    }
+
+    if (signal_exit_code)
+    {
+        swallow_stdout_from_function(destruct);
+        return signal_exit_code;
     }
 
     int exit_code = write_output(&state);
