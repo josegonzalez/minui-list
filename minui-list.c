@@ -13,8 +13,8 @@
 #include <SDL/SDL_ttf.h>
 #endif
 
-#include "api.h"
 #include "defines.h"
+#include "api.h"
 #include "utils.h"
 
 // Platform compatibility: tg5050 (NextUI) uses PWR_isOnline instead of PLAT_isOnline
