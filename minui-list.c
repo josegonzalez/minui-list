@@ -220,6 +220,8 @@ struct AppState
     char write_value[1024];
     // the fonts to use for the list
     struct Fonts fonts;
+    // the initially selected item index (-1 = not set)
+    int initial_selected;
     // the state of the list
     struct ListState *list_state;
 };
@@ -956,16 +958,78 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         }
     }
 
-    state->selected = 0;
-
     if (!show_hardware_group && has_left_button_group(app_state, state))
     {
         max_row_count -= 1;
     }
 
-    state->first_visible = 0;
-    state->last_visible = (item_count < max_row_count) ? item_count : max_row_count;
     state->item_count = item_count;
+
+    // determine the suitable selected item to start with
+    int initial_selection = 0;
+    if (strlen(item_key) > 0)
+    {
+        JSON_Object *root_obj = json_value_get_object(root_value);
+        if (root_obj && json_object_has_value(root_obj, "selected"))
+        {
+            initial_selection = (int)json_object_get_number(root_obj, "selected");
+        }
+    }
+    if (app_state->initial_selected >= 0)
+    {
+        initial_selection = app_state->initial_selected;
+    }
+
+    int first_valid = -1;
+    bool initial_selection_is_valid = false;
+    for (size_t i = 0; i < state->item_count; i++)
+    {
+        bool valid_for_selection = !state->items[i].features.is_header &&
+            !state->items[i].features.unselectable;
+
+        if (valid_for_selection)
+        {
+            first_valid = (first_valid >= 0) ? first_valid : (int) i;
+
+            if ((int) i == initial_selection) {
+                initial_selection_is_valid = true;
+            }
+        }
+    }
+
+    if (initial_selection_is_valid)
+    {
+        state->selected = initial_selection;
+    }
+    else if (first_valid >= 0)
+    {
+        state->selected = first_valid;
+    }
+    else
+    {
+        state->selected = -1;
+    }
+
+    // determine the range of items to display initially
+    // short list are displayed in full, otherwise try to center selection
+    if (item_count <= max_row_count)
+    {
+        state->first_visible = 0;
+        state->last_visible = item_count;
+    }
+    else
+    {
+        state->first_visible = state->selected - (int) max_row_count / 2;
+        state->first_visible = (state->first_visible >= 0) ? state->first_visible : 0;
+
+        state->last_visible = state->selected + max_row_count;
+        // if too close to the end of the list, make sure the last item is visible
+        if ((size_t)state->last_visible > item_count)
+        {
+            state->last_visible = (int) item_count;
+            state->first_visible = state->last_visible - max_row_count;
+        }
+    }
 
     json_value_free(root_value);
     return state;
@@ -2055,6 +2119,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"title-alignment", required_argument, 0, 'T'},
         {"write-location", required_argument, 0, 'w'},
         {"write-value", required_argument, 0, 'W'},
+        {"selected", required_argument, 0, 's'},
         {"disable-auto-sleep", no_argument, 0, 'U'},
         {0, 0, 0, 0}};
 
@@ -2062,7 +2127,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
-    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:t:T:w:W:UH", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:s:t:T:w:W:UH", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -2113,6 +2178,9 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             break;
         case 'K':
             strncpy(state->item_key, optarg, sizeof(state->item_key) - 1);
+            break;
+        case 's':
+            state->initial_selected = atoi(optarg);
             break;
         case 't':
             strncpy(state->title, optarg, sizeof(state->title) - 1);
@@ -2644,6 +2712,7 @@ int main(int argc, char *argv[])
         .show_hardware_group = 1,
         .show_brightness_setting = 0,
         .disable_auto_sleep = false,
+        .initial_selected = -1,
         .fonts = {
             .large = NULL,
             .medium = NULL,
@@ -2684,25 +2753,10 @@ int main(int argc, char *argv[])
         return ExitCodeError;
     }
 
-    if (state.list_state->item_count > 0)
+    if (state.list_state->item_count == 0 || state.list_state->selected < 0)
     {
-        // if there are items in the list,
-        // validate that at least one item is not a header and is selectable
-        bool has_selectable = false;
-        for (size_t i = 0; i < state.list_state->item_count; i++)
-        {
-            state.list_state->selected = i;
-            if (!state.list_state->items[i].features.is_header && !state.list_state->items[i].features.unselectable)
-            {
-                has_selectable = true;
-                break;
-            }
-        }
-        if (!has_selectable)
-        {
-            log_error("No selectable items found");
-            return ExitCodeError;
-        }
+        log_error("No selectable items found");
+        return ExitCodeError;
     }
 
     // swallow all stdout from init calls
