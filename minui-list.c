@@ -13,8 +13,8 @@
 #include <SDL/SDL_ttf.h>
 #endif
 
-#include "defines.h"
 #include "api.h"
+#include "defines.h"
 #include "utils.h"
 
 // Platform compatibility: tg5050 (NextUI) uses PWR_isOnline instead of PLAT_isOnline
@@ -2385,7 +2385,8 @@ void init()
 void destruct()
 {
     static int destructed = 0;
-    if (destructed) return;
+    if (destructed)
+        return;
     destructed = 1;
 
     QuitSettings();
