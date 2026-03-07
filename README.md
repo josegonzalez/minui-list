@@ -125,6 +125,10 @@ minui-list --file list.json --hide-hardware-group
 # minui-list will auto-sleep like the normal minui menu by default
 # this can be disabled by setting the --disable-auto-sleep flag
 minui-list --file list.json --disable-auto-sleep
+
+# pre-select a specific item by index (0-indexed)
+# this overrides the "selected" property in JSON input
+minui-list --file list.json --selected 2
 ```
 
 To create a list of items from newline-delimited strings, you can use jq:
@@ -193,7 +197,11 @@ A list of objects set at a particular key. May or may not be formatted. Comments
 }
 ```
 
-Properties:
+Top-level properties (on the root object, not on individual items):
+
+- selected: (optional, type: `integer`, default: `0`) the index of the initially selected item. Can be overridden by the `--selected` CLI flag.
+
+Item properties:
 
 - name: (required, type: `string`) the option name
 - options: (optional, type: `[]string`, default: `[]`) a list of strings to display as options. The arrow keys can be used to change the selected option, and the confirm button will be hidden if the currently selected option is the same as the default selected option.
