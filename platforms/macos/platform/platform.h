@@ -50,8 +50,8 @@
 #define CODE_X			26
 #define CODE_Y			20
 
-#define CODE_L1			CODE_NA
-#define CODE_R1			CODE_NA
+#define CODE_L1			8	// E key for L1
+#define CODE_R1			21	// R key for R1
 #define CODE_L2			CODE_NA
 #define CODE_R2			CODE_NA
 #define CODE_L3			CODE_NA
