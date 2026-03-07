@@ -129,6 +129,11 @@ minui-list --file list.json --disable-auto-sleep
 # pre-select a specific item by index (0-indexed)
 # this overrides the "selected" property in JSON input
 minui-list --file list.json --selected 2
+
+# enable alphabetical scrolling with L1/R1 buttons
+# items will be sorted alphabetically automatically
+# L1 jumps to the previous letter group, R1 jumps to the next
+minui-list --file list.json --alphabetic-scroll
 ```
 
 To create a list of items from newline-delimited strings, you can use jq:
@@ -183,15 +188,16 @@ A list of objects set at a particular key. May or may not be formatted. Comments
 
 ```json
 {
+  "alphabetic_scroll": true,
   "items": [
     {
-      "name": "item 1"
+      "name": "Apple"
     },
     {
-      "name": "item 2"
+      "name": "Banana"
     },
     {
-      "name": "item 3"
+      "name": "Cherry"
     }
   ]
 }
@@ -200,6 +206,7 @@ A list of objects set at a particular key. May or may not be formatted. Comments
 Top-level properties (on the root object, not on individual items):
 
 - selected: (optional, type: `integer`, default: `0`) the index of the initially selected item. Can be overridden by the `--selected` CLI flag.
+- alphabetic_scroll: (optional, type: `boolean`, default: `false`) enables L1/R1 alphabetical scrolling. When enabled, items are automatically sorted alphabetically and L1/R1 buttons jump between letter groups. Headers and unselectable items are skipped.
 
 Item properties:
 
