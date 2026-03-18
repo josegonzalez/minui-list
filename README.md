@@ -90,11 +90,17 @@ minui-list --file list.json --action-button "X" --action-text "RESUME"
 # the only buttons supported are "A", "B", "X", and "Y"
 minui-list --file list.json --enable-button "Y"
 
-# write the current json state to stdout
-# this will _always_ write the current state to stdout
-# regardless of exit code
+# write the current json state to stdout (or to the file)
+# this will _always_ write the current state regardless of exit code
 # the index of the selected item will be written
 # to the top-level `selected` property
+#
+# the array of the items will be written to the top-level `items`
+# property, containing the items used for list presentation - either
+# the original items or sorted if alphabetic_scroll is used.
+#
+# Note that when alphabetic_scroll is used, selected item index
+# is relative to the sorted list.
 minui-list --file list.json --write-value state
 
 # paths to a custom font (.otf or .ttf) can be specified
