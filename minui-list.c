@@ -206,6 +206,8 @@ struct AppState
     bool disable_auto_sleep;
     // whether alphabetic scroll (L1/R1 letter jumping) is enabled
     bool alphabetic_scroll;
+    // maximum number of visible list rows
+    int max_row_count;
     // the button to display on the Enable button
     char enable_button[1024];
     // the path to the JSON file
@@ -338,19 +340,12 @@ static int compare_items_alphabetic(const void *a, const void *b)
 }
 
 // ListState_New creates a new ListState from a JSON file
-struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *title, const char *confirm_text, const char *default_background_image, const char *default_background_color, bool show_hardware_group, struct AppState *app_state)
+struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *confirm_text, const char *default_background_image, const char *default_background_color, struct AppState *app_state)
 {
     struct ListState *state = malloc(sizeof(struct ListState));
-
-    int max_row_count = MAIN_ROW_COUNT;
-    if (strlen(title) > 0)
-    {
-        max_row_count -= 1;
-    }
-    if (show_hardware_group)
-    {
-        max_row_count -= 1;
-    }
+    state->selected = -1;
+    state->first_visible = 0;
+    state->last_visible = 0;
 
     if (strcmp(format, "text") == 0)
     {
@@ -401,9 +396,6 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         // Allocate array for items
         state->items = malloc(sizeof(struct ListItem) * item_count);
         state->item_count = item_count;
-        state->last_visible = (item_count < max_row_count) ? item_count : max_row_count;
-        state->first_visible = 0;
-        state->selected = 0;
 
         // Add non-empty lines to items array
         size_t item_index = 0;
@@ -980,30 +972,28 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         }
     }
 
-    if (!show_hardware_group && has_left_button_group(app_state, state))
-    {
-        max_row_count -= 1;
-    }
-
     state->item_count = item_count;
 
-    // determine the suitable selected item to start with
-    int initial_selection = 0;
+    // read the requested initial selection from JSON (if any)
     if (strlen(item_key) > 0)
     {
         JSON_Object *root_obj = json_value_get_object(root_value);
         if (root_obj && json_object_has_value(root_obj, "selected"))
         {
-            initial_selection = (int)json_object_get_number(root_obj, "selected");
+            state->selected = (int)json_object_get_number(root_obj, "selected");
         }
     }
-    if (app_state->initial_selected >= 0)
-    {
-        initial_selection = app_state->initial_selected;
-    }
 
+    json_value_free(root_value);
+    return state;
+}
+
+// ListState_InitView validates selection and computes the initial visible window.
+void ListState_InitView(struct ListState *state, int max_row_count)
+{
+    // validate selection: must point to a selectable item
     int first_valid = -1;
-    bool initial_selection_is_valid = false;
+    bool selection_is_valid = false;
     for (size_t i = 0; i < state->item_count; i++)
     {
         bool valid_for_selection = !state->items[i].features.is_header &&
@@ -1011,50 +1001,45 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
 
         if (valid_for_selection)
         {
-            first_valid = (first_valid >= 0) ? first_valid : (int) i;
-
-            if ((int) i == initial_selection) {
-                initial_selection_is_valid = true;
+            if (first_valid < 0)
+            {
+                first_valid = (int)i;
+            }
+            if ((int)i == state->selected)
+            {
+                selection_is_valid = true;
             }
         }
     }
 
-    if (initial_selection_is_valid)
+    if (!selection_is_valid)
     {
-        state->selected = initial_selection;
-    }
-    else if (first_valid >= 0)
-    {
-        state->selected = first_valid;
-    }
-    else
-    {
-        state->selected = -1;
+        state->selected = (first_valid >= 0) ? first_valid : -1;
     }
 
-    // determine the range of items to display initially
-    // short list are displayed in full, otherwise try to center selection
-    if (item_count <= max_row_count)
+    // compute the visible window
+    size_t item_count = state->item_count;
+    if (item_count <= (size_t)max_row_count)
     {
         state->first_visible = 0;
         state->last_visible = item_count;
     }
     else
     {
-        state->first_visible = state->selected - (int) max_row_count / 2;
-        state->first_visible = (state->first_visible >= 0) ? state->first_visible : 0;
+        // try to center the selection
+        state->first_visible = state->selected - max_row_count / 2;
+        if (state->first_visible < 0)
+        {
+            state->first_visible = 0;
+        }
 
-        state->last_visible = state->selected + max_row_count;
-        // if too close to the end of the list, make sure the last item is visible
+        state->last_visible = state->first_visible + max_row_count;
         if ((size_t)state->last_visible > item_count)
         {
-            state->last_visible = (int) item_count;
+            state->last_visible = (int)item_count;
             state->first_visible = state->last_visible - max_row_count;
         }
     }
-
-    json_value_free(root_value);
-    return state;
 }
 
 // handle_input interprets input events and mutates app state
@@ -1074,12 +1059,7 @@ void handle_input(struct AppState *state)
 
     PAD_poll();
 
-    // discount the title from the max row count
-    int max_row_count = MAIN_ROW_COUNT;
-    if (strlen(state->title) > 0)
-    {
-        max_row_count -= 1;
-    }
+    int max_row_count = state->max_row_count;
 
     bool is_action_button_pressed = false;
     bool is_cancel_button_pressed = false;
@@ -1371,12 +1351,17 @@ void handle_input(struct AppState *state)
         else
         {
             state->list_state->selected += max_row_count;
-            while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
+            if (state->list_state->selected >= state->list_state->item_count)
+            {
+                state->list_state->selected = state->list_state->item_count - 1;
+            }
+            while (state->list_state->selected < (int)state->list_state->item_count &&
+                   (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable))
             {
                 state->list_state->selected += 1;
             }
 
-            if (state->list_state->selected >= state->list_state->item_count)
+            if (state->list_state->selected >= (int)state->list_state->item_count)
             {
                 state->list_state->selected = state->list_state->item_count - 1;
                 int start = state->list_state->item_count - max_row_count;
@@ -2903,41 +2888,71 @@ int main(int argc, char *argv[])
         return ExitCodeError;
     }
 
-    state.list_state = ListState_New(state.file, state.format, state.item_key, state.title, state.confirm_text, state.background_image, state.background_color, state.show_hardware_group, &state);
+    state.list_state = ListState_New(state.file, state.format, state.item_key, state.confirm_text, state.background_image, state.background_color, &state);
     if (state.list_state == NULL)
     {
         log_error("Failed to create list state");
         return ExitCodeError;
     }
 
-    if (state.list_state->item_count == 0 || state.list_state->selected < 0)
+    // CLI --selected overrides JSON selected
+    if (state.initial_selected >= 0)
     {
-        log_error("No selectable items found");
-        return ExitCodeError;
+        state.list_state->selected = state.initial_selected;
     }
 
     // Sort items alphabetically if alphabetic_scroll is enabled
     if (state.alphabetic_scroll && state.list_state->item_count > 0)
     {
+        // remember the selected item's name so we can find it after sorting
+        const char *selected_name = NULL;
+        if (state.list_state->selected >= 0 && state.list_state->selected < (int)state.list_state->item_count)
+        {
+            selected_name = state.list_state->items[state.list_state->selected].name;
+        }
+
         qsort(state.list_state->items,
               state.list_state->item_count,
               sizeof(struct ListItem),
               compare_items_alphabetic);
 
-        // Reset selection to first selectable item after sort
-        state.list_state->selected = 0;
-        while (state.list_state->selected < (int)state.list_state->item_count &&
-               (state.list_state->items[state.list_state->selected].features.is_header ||
-                state.list_state->items[state.list_state->selected].features.unselectable))
+        // restore selection to the same item by name
+        if (selected_name != NULL)
         {
-            state.list_state->selected++;
+            state.list_state->selected = -1;
+            for (size_t i = 0; i < state.list_state->item_count; i++)
+            {
+                if (strcmp(state.list_state->items[i].name, selected_name) == 0)
+                {
+                    state.list_state->selected = (int)i;
+                    break;
+                }
+            }
         }
     }
 
     // swallow all stdout from init calls
     // MinUI will sometimes randomly log to stdout
+    // NOTE: must call init() before using MAIN_ROW_COUNT, as it depends
+    // on runtime platform detection (e.g. is_brick on tg5040)
     swallow_stdout_from_function(init);
     atexit(destruct);
+
+    // compute max_row_count after init, since MAIN_ROW_COUNT may depend on runtime state
+    state.max_row_count = MAIN_ROW_COUNT;
+    if (strlen(state.title) > 0)
+    {
+        state.max_row_count -= 1;
+    }
+
+    // validate selection and compute initial visible window
+    ListState_InitView(state.list_state, state.max_row_count);
+
+    if (state.list_state->item_count == 0 || state.list_state->selected < 0)
+    {
+        log_error("No selectable items found");
+        return ExitCodeError;
+    }
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
