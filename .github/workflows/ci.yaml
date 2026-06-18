@@ -43,7 +43,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v4
@@ -112,7 +112,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install SDL2 dependencies
         run: brew install sdl2 sdl2_image sdl2_ttf pkg-config
@@ -143,7 +143,7 @@ jobs:
     needs: [ci, macos]
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Generate Pattern
         id: pattern
