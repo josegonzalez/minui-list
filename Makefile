@@ -3,11 +3,15 @@ CURRENT_WORKING_DIR = $(shell pwd)
 PLATFORM ?= tg5040
 MINUI_VERSION ?= v20251023-0
 NEXTUI_VERSION ?= v6.9.0
+H700_VERSION ?= h700-rc3
 
 # Determine upstream repository based on platform
 ifeq ($(PLATFORM),tg5050)
   UPSTREAM_REPO = https://github.com/loveRetro/NextUI
   UPSTREAM_VERSION = $(NEXTUI_VERSION)
+else ifeq ($(PLATFORM),h700)
+  UPSTREAM_REPO = https://github.com/pvaibhav/NextUI
+  UPSTREAM_VERSION = $(H700_VERSION)
 else
   UPSTREAM_REPO = https://github.com/shauninman/MinUI
   UPSTREAM_VERSION = $(MINUI_VERSION)
@@ -48,10 +52,16 @@ else
   INCDIR = -I. -Iplatform/$(PLATFORM)/include/ -Iminui/workspace/all/common/ -Iminui/workspace/$(PLATFORM)/platform/ -Iinclude/
   SOURCE = $(TARGET).c minui/workspace/all/common/scaler.c minui/workspace/all/common/utils.c minui/workspace/all/common/api.c minui/workspace/$(PLATFORM)/platform/platform.c include/parson/parson.c
   FLAGS = -L$(LD_LIBRARY_PATH) -ldl -lmsettings $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
-  # tg5050 uses NextUI toolchain which installs libmsettings to /opt/nextui
-  ifeq ($(PLATFORM),tg5050)
+  # tg5050/h700 use the NextUI toolchain which installs libmsettings to /opt/nextui
+  ifneq (,$(filter $(PLATFORM),tg5050 h700))
     INCDIR += -I/opt/nextui/include
-    FLAGS += -L/opt/nextui/lib -lGLESv2 -lmali -lsamplerate
+    # tg5050's GLESv2 is backed by a separate mali blob that must be linked
+    # explicitly; h700 links libGLESv2 directly and ships no standalone libmali
+    NEXTUI_GL_LIBS = -lGLESv2 -lsamplerate
+    ifeq ($(PLATFORM),tg5050)
+      NEXTUI_GL_LIBS = -lGLESv2 -lmali -lsamplerate
+    endif
+    FLAGS += -L/opt/nextui/lib $(NEXTUI_GL_LIBS)
     CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DPLATFORM_NEXTUI
     SOURCE += minui/workspace/all/common/config.c
   else

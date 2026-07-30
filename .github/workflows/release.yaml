@@ -29,6 +29,7 @@ jobs:
       matrix:
         toolchain:
           # - gkdpixel deprecated, but also i386 only so it won't build without buildx
+          - h700
           - m17 # (deprecated)
           - magicmini
           - miyoomini # (deprecated)
@@ -43,6 +44,8 @@ jobs:
           - trimuismart # (deprecated)
           - zero28
         include:
+          - toolchain: h700
+            toolchain_repo: LoveRetro/h700-toolchain
           - toolchain: tg5050
             toolchain_repo: LoveRetro/tg5050-toolchain
     outputs:
