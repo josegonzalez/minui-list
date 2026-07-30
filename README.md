@@ -85,10 +85,17 @@ minui-list --file list.json --cancel-button "Y"
 minui-list --file list.json --action-button "X" --action-text "RESUME"
 
 # specify an alternative button for the Enable Button
-# by default, the Cancel button is "Y"
+# by default, the Enable button is "Y"
 # the button text is either "Enable" or "Disable"
 # the only buttons supported are "A", "B", "X", and "Y"
 minui-list --file list.json --enable-button "Y"
+
+# a button may be assigned to more than one role
+# when the same button is assigned to multiple roles, presses are
+# resolved by precedence: action > cancel/confirm > enable
+# for example, "Y" can be used as the action button even though it is
+# also the default enable button
+minui-list --file list.json --action-button "Y" --action-text "EXIT"
 
 # write the current json state to stdout (or to the file)
 # this will _always_ write the current state regardless of exit code
@@ -273,6 +280,24 @@ Item example:
 - 10: Error parsing input
 - 11: Error serializing output
 - 130: Ctrl+C
+
+## Testing
+
+Argument validation is covered by a [bats](https://github.com/bats-core/bats-core) suite in `tests/`. The tests exercise `parse_arguments`, which runs before any display is initialized, so they can run headless against a built binary.
+
+```shell
+# build the macOS binary (see docs/macos.md)
+PLATFORM=macos make
+
+# install bats (macOS)
+brew install bats-core
+
+# run the suite (defaults to ./minui-list-macos)
+bats tests/
+
+# or point at a specific binary
+MINUI_LIST_BIN=./minui-list-macos bats tests/
+```
 
 ## Screenshots
 

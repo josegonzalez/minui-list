@@ -123,6 +123,14 @@ jobs:
       - name: Build the application
         run: PLATFORM=macos make
 
+      - name: Install bats
+        run: brew install bats-core
+
+      - name: Run tests
+        run: bats tests/
+        env:
+          MINUI_LIST_BIN: ./minui-list-macos
+
       - name: Rename binary with architecture
         id: binary
         run: |
