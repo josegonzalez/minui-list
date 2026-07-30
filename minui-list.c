@@ -83,6 +83,8 @@ struct ListItemFeature
     bool hide_cancel;
     // whether to hide the confirm button when the item is selected
     bool hide_confirm;
+    // whether to show the confirm button when the default option is selected
+    bool show_confirm;
     // whether or not the item is a header
     bool is_header;
     // whether or not the item is unselectable
@@ -108,6 +110,8 @@ struct ListItemFeature
     bool has_hide_cancel;
     // whether the item has a hide_confirm field
     bool has_hide_confirm;
+    // whether the item has a show_confirm field
+    bool has_show_confirm;
     // whether the item has a is_header field
     bool has_is_header;
     // whether the item has a unselectable field
@@ -202,6 +206,8 @@ struct AppState
     char cancel_button[1024];
     // the text to display on the Cancel button
     char cancel_text[1024];
+    // whether to always display confirm button
+    bool always_show_confirm;
     // whether to disable sleep
     bool disable_auto_sleep;
     // whether alphabetic scroll (L1/R1 letter jumping) is enabled
@@ -437,6 +443,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     .hide_action = false,
                     .hide_cancel = false,
                     .hide_confirm = false,
+                    .show_confirm = false,
                     .is_header = false,
                     .unselectable = false,
                     .alignment = "",
@@ -449,6 +456,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     .has_hide_action = false,
                     .has_hide_cancel = false,
                     .has_hide_confirm = false,
+                    .has_show_confirm = false,
                     .has_is_header = false,
                     .has_unselectable = false,
                     .has_alignment = false,
@@ -559,6 +567,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .hide_action = false,
                 .hide_cancel = false,
                 .hide_confirm = false,
+                .show_confirm = false,
                 .is_header = false,
                 .unselectable = false,
                 .alignment = "",
@@ -571,6 +580,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .has_hide_action = false,
                 .has_hide_cancel = false,
                 .has_hide_confirm = false,
+                .has_show_confirm = false,
                 .has_is_header = false,
                 .has_unselectable = false,
                 .has_alignment = false,
@@ -668,6 +678,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .hide_action = false,
                 .hide_cancel = false,
                 .hide_confirm = false,
+                .show_confirm = false,
                 .is_header = false,
                 .unselectable = false,
                 .alignment = "",
@@ -680,6 +691,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .has_hide_action = false,
                 .has_hide_cancel = false,
                 .has_hide_confirm = false,
+                .has_show_confirm = false,
                 .has_is_header = false,
                 .has_unselectable = false,
                 .has_alignment = false,
@@ -862,6 +874,25 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 {
                     state->items[i].features.hide_confirm = false;
                     state->items[i].features.has_hide_confirm = false;
+                }
+
+                // read in the show_confirm from the json object
+                // if there is no show_confirm, set it to false
+                // if there is a show_confirm, treat it as a boolean
+                if (json_object_get_boolean(features, "show_confirm") == 1)
+                {
+                    state->items[i].features.show_confirm = true;
+                    state->items[i].features.has_show_confirm = true;
+                }
+                else if (json_object_get_boolean(features, "show_confirm") == 0)
+                {
+                    state->items[i].features.show_confirm = false;
+                    state->items[i].features.has_show_confirm = true;
+                }
+                else
+                {
+                    state->items[i].features.show_confirm = false;
+                    state->items[i].features.has_show_confirm = false;
                 }
 
                 // read in the unselectable from the json object
@@ -1159,12 +1190,12 @@ void handle_input(struct AppState *state)
     }
 
     bool force_hide_confirm = false;
-    if (state->list_state->items[state->list_state->selected].has_options && state->list_state->items[state->list_state->selected].initial_selected == state->list_state->items[state->list_state->selected].selected)
+    if (!state->always_show_confirm && !state->list_state->items[state->list_state->selected].features.show_confirm && state->list_state->items[state->list_state->selected].has_options && state->list_state->items[state->list_state->selected].initial_selected == state->list_state->items[state->list_state->selected].selected)
     {
         force_hide_confirm = true;
     }
 
-    if (state->list_state->items[state->list_state->selected].features.hide_confirm)
+    if (!state->always_show_confirm && state->list_state->items[state->list_state->selected].features.hide_confirm)
     {
         force_hide_confirm = true;
     }
@@ -1688,12 +1719,12 @@ bool draw_background(SDL_Surface *screen, struct AppState *state)
 void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool should_draw_background_image)
 {
     bool force_hide_confirm = false;
-    if (state->list_state->items[state->list_state->selected].has_options && state->list_state->items[state->list_state->selected].initial_selected == state->list_state->items[state->list_state->selected].selected)
+    if (!state->always_show_confirm && !state->list_state->items[state->list_state->selected].features.show_confirm && state->list_state->items[state->list_state->selected].has_options && state->list_state->items[state->list_state->selected].initial_selected == state->list_state->items[state->list_state->selected].selected)
     {
         force_hide_confirm = true;
     }
 
-    if (state->list_state->items[state->list_state->selected].features.hide_confirm)
+    if (!state->always_show_confirm && state->list_state->items[state->list_state->selected].features.hide_confirm)
     {
         force_hide_confirm = true;
     }
@@ -2223,6 +2254,7 @@ void signal_handler(int signal)
 // - --cancel-button <button> (default: "B")
 // - --cancel-text <text> (default: "BACK")
 // - --enable-button <button> (default: "Y")
+// - --always-show-confirm (default: false)
 // - --disable-auto-sleep (default: false)
 // - --font-default <path> (default: empty string)
 // - --font-large <path> (default: empty string)
@@ -2258,6 +2290,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"write-location", required_argument, 0, 'w'},
         {"write-value", required_argument, 0, 'W'},
         {"selected", required_argument, 0, 's'},
+        {"always-show-confirm", no_argument, 0, 'X'},
         {"disable-auto-sleep", no_argument, 0, 'U'},
         {"alphabetic-scroll", no_argument, 0, 'S'},
         {0, 0, 0, 0}};
@@ -2266,7 +2299,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
-    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:s:t:T:w:W:UHS", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:s:t:T:w:W:XUHS", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -2335,6 +2368,9 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
             break;
         case 'U':
             state->disable_auto_sleep = true;
+            break;
+        case 'X':
+            state->always_show_confirm = true;
             break;
         case 'S':
             state->alphabetic_scroll = true;
@@ -2596,6 +2632,15 @@ int write_output(struct AppState *state)
             }
         }
 
+        if (state->list_state->items[i].features.has_show_confirm)
+        {
+            if (json_object_dotset_boolean(features, "show_confirm", state->list_state->items[i].features.show_confirm))
+            {
+                log_error("Failed to set show_confirm");
+                return ExitCodeSerializeError;
+            }
+        }
+
         if (state->list_state->items[i].features.has_is_header)
         {
             if (json_object_dotset_boolean(features, "is_header", state->list_state->items[i].features.is_header))
@@ -2715,6 +2760,7 @@ int main(int argc, char *argv[])
         .redraw = 1,
         .show_hardware_group = 1,
         .show_brightness_setting = 0,
+        .always_show_confirm = false,
         .disable_auto_sleep = false,
         .initial_selected = -1,
         .fonts = {

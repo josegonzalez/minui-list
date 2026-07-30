@@ -139,6 +139,14 @@ minui-list --file list.json --hide-hardware-group
 # this can be disabled by setting the --disable-auto-sleep flag
 minui-list --file list.json --disable-auto-sleep
 
+# minui-list will hide the confirm button if the currently selected
+# option is the same as the default selected option.
+# the confirm button can be forced to always
+# show by setting the --always-show-confirm flag
+#
+# this overrides the "hide_confirm" property in JSON input
+minui-list --file list.json --always-show-confirm
+
 # pre-select a specific item by index (0-indexed)
 # this overrides the "selected" property in JSON input
 minui-list --file list.json --selected 2
@@ -236,8 +244,11 @@ Item properties:
 - features.hide_action: (optional, type: `boolean`, default: `false`) whether to show the action button on this entry or not
 - features.hide_cancel: (optional, type: `boolean`, default: `false`) whether to show the cancel button on this entry or not
 - features.hide_confirm: (optional, type: `boolean`, default: `false`) whether to show the confirm button on this entry or not
+- features.show_confirm: (optional, type: `boolean`, default: `false`) whether to show the confirm button on this entry or not
 - features.is_header: (optional, type: `boolean`, default: `false`) allows specifying that an item is a header
 - features.unselectable: (optional, type: `boolean`, default: `false`) whether an item is selectable or not
+
+The confirm button will appear if --always-show-confirm is enabled, or if features.show_confirm is active and features.hide_confirm is not active.
 
 Item example:
 
