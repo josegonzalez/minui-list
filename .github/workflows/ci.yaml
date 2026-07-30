@@ -101,6 +101,16 @@ jobs:
           name: ${{ steps.binary.outputs.filename }}
           path: ${{ steps.binary.outputs.filename }}
 
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Run unit tests
+        run: make test
+
   macos:
     name: macos
     runs-on: ${{ matrix.os }}
@@ -151,7 +161,7 @@ jobs:
   release:
     name: release
     runs-on: ubuntu-24.04-arm
-    needs: [ci, macos]
+    needs: [ci, unit-tests, macos]
     steps:
       - name: Checkout
         uses: actions/checkout@v7

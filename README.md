@@ -154,6 +154,7 @@ minui-list --file list.json --selected 2
 # enable alphabetical scrolling with L1/R1 buttons
 # items will be sorted alphabetically automatically
 # L1 jumps to the previous letter group, R1 jumps to the next
+# both wrap around at the ends of the list
 minui-list --file list.json --alphabetic-scroll
 ```
 
@@ -227,7 +228,7 @@ A list of objects set at a particular key. May or may not be formatted. Comments
 Top-level properties (on the root object, not on individual items):
 
 - selected: (optional, type: `integer`, default: `0`) the index of the initially selected item. Can be overridden by the `--selected` CLI flag.
-- alphabetic_scroll: (optional, type: `boolean`, default: `false`) enables L1/R1 alphabetical scrolling. When enabled, items are automatically sorted alphabetically and L1/R1 buttons jump between letter groups. Headers and unselectable items are skipped.
+- alphabetic_scroll: (optional, type: `boolean`, default: `false`) enables L1/R1 alphabetical scrolling. When enabled, items are automatically sorted alphabetically and L1/R1 buttons jump between letter groups, wrapping around at the ends of the list. Headers and unselectable items are skipped.
 
 Item properties:
 
@@ -308,6 +309,13 @@ bats tests/
 
 # or point at a specific binary
 MINUI_LIST_BIN=./minui-list-macos bats tests/
+```
+
+Navigation logic that does not depend on a display, such as the L1/R1 alphabetic letter-jump, is covered by pure C unit tests in `tests/list_nav_test.c`. They build with the host compiler and need no SDL or cross toolchain:
+
+```shell
+# build and run the C unit tests
+make test
 ```
 
 ## Screenshots

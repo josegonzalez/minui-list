@@ -19,6 +19,8 @@
 #include "api.h"
 #include "utils.h"
 
+#include "list_nav.h"
+
 // Platform compatibility: tg5050 (NextUI) uses PWR_isOnline instead of PLAT_isOnline
 #ifdef PLATFORM_NEXTUI
 #define PLAT_isOnline PWR_isOnline
@@ -1073,6 +1075,34 @@ void ListState_InitView(struct ListState *state, int max_row_count)
     }
 }
 
+// alphabetic_jump_target builds an SDL-free navigation view of the list and
+// returns the index to jump to for an alphabetic (L1/R1) letter jump. `forward`
+// selects next-letter (true) or previous-letter (false). Returns the current
+// selection unchanged when there is nowhere to jump.
+static int alphabetic_jump_target(struct ListState *state, bool forward)
+{
+    if (state->item_count == 0)
+        return state->selected;
+
+    struct ListNavItem *nav = malloc(state->item_count * sizeof(*nav));
+    if (nav == NULL)
+        return state->selected;
+
+    for (size_t i = 0; i < state->item_count; i++)
+    {
+        nav[i].name = state->items[i].name;
+        nav[i].is_header = state->items[i].features.is_header;
+        nav[i].unselectable = state->items[i].features.unselectable;
+    }
+
+    int target = forward
+                     ? ListNav_NextLetterIndex(nav, (int)state->item_count, state->selected)
+                     : ListNav_PrevLetterIndex(nav, (int)state->item_count, state->selected);
+
+    free(nav);
+    return target;
+}
+
 // handle_input interprets input events and mutates app state
 void handle_input(struct AppState *state)
 {
@@ -1413,133 +1443,26 @@ void handle_input(struct AppState *state)
     }
     else if (state->alphabetic_scroll && PAD_justRepeated(BTN_L1))
     {
-        if (state->list_state->item_count > 0)
+        // jump to the previous letter group; recompute the window so the new
+        // selection is framed correctly, including on wrap-around to the end
+        int target = alphabetic_jump_target(state->list_state, false);
+        if (target != state->list_state->selected)
         {
-            char current_letter = toupper((unsigned char)state->list_state->items[state->list_state->selected].name[0]);
-            int target_index = -1;
-
-            // Search backwards for first item with different letter
-            for (int i = state->list_state->selected - 1; i >= 0; i--)
-            {
-                if (state->list_state->items[i].features.is_header ||
-                    state->list_state->items[i].features.unselectable)
-                    continue;
-
-                char item_letter = toupper((unsigned char)state->list_state->items[i].name[0]);
-                if (item_letter != current_letter)
-                {
-                    // Found different letter - now find FIRST item with this letter
-                    target_index = i;
-                    for (int j = i - 1; j >= 0; j--)
-                    {
-                        if (state->list_state->items[j].features.is_header ||
-                            state->list_state->items[j].features.unselectable)
-                            continue;
-                        if (toupper((unsigned char)state->list_state->items[j].name[0]) == item_letter)
-                            target_index = j;
-                        else
-                            break;
-                    }
-                    break;
-                }
-            }
-
-            // Wrap: find last different letter from end
-            if (target_index == -1)
-            {
-                for (int i = state->list_state->item_count - 1; i >= 0; i--)
-                {
-                    if (state->list_state->items[i].features.is_header ||
-                        state->list_state->items[i].features.unselectable)
-                        continue;
-
-                    char item_letter = toupper((unsigned char)state->list_state->items[i].name[0]);
-                    if (item_letter != current_letter)
-                    {
-                        target_index = i;
-                        for (int j = i - 1; j >= 0; j--)
-                        {
-                            if (state->list_state->items[j].features.is_header ||
-                                state->list_state->items[j].features.unselectable)
-                                continue;
-                            if (toupper((unsigned char)state->list_state->items[j].name[0]) == item_letter)
-                                target_index = j;
-                            else
-                                break;
-                        }
-                        break;
-                    }
-                }
-            }
-
-            if (target_index != -1 && target_index != state->list_state->selected)
-            {
-                state->list_state->selected = target_index;
-                // Update visible window
-                if (state->list_state->selected < state->list_state->first_visible)
-                {
-                    state->list_state->first_visible = state->list_state->selected;
-                    state->list_state->last_visible = state->list_state->first_visible + max_row_count;
-                    if (state->list_state->last_visible > (int)state->list_state->item_count)
-                        state->list_state->last_visible = state->list_state->item_count;
-                }
-                state->redraw = 1;
-            }
+            state->list_state->selected = target;
+            ListState_InitView(state->list_state, max_row_count);
+            state->redraw = 1;
         }
     }
     else if (state->alphabetic_scroll && PAD_justRepeated(BTN_R1))
     {
-        if (state->list_state->item_count > 0)
+        // jump to the next letter group; recompute the window so the new
+        // selection is framed correctly, including on wrap-around to the start
+        int target = alphabetic_jump_target(state->list_state, true);
+        if (target != state->list_state->selected)
         {
-            char current_letter = toupper((unsigned char)state->list_state->items[state->list_state->selected].name[0]);
-            int target_index = -1;
-
-            // Search forwards for first item with different letter
-            for (int i = state->list_state->selected + 1; i < (int)state->list_state->item_count; i++)
-            {
-                if (state->list_state->items[i].features.is_header ||
-                    state->list_state->items[i].features.unselectable)
-                    continue;
-
-                char item_letter = toupper((unsigned char)state->list_state->items[i].name[0]);
-                if (item_letter != current_letter)
-                {
-                    target_index = i;
-                    break;
-                }
-            }
-
-            // Wrap: find first different letter from beginning
-            if (target_index == -1)
-            {
-                for (int i = 0; i < (int)state->list_state->item_count; i++)
-                {
-                    if (state->list_state->items[i].features.is_header ||
-                        state->list_state->items[i].features.unselectable)
-                        continue;
-
-                    char item_letter = toupper((unsigned char)state->list_state->items[i].name[0]);
-                    if (item_letter != current_letter)
-                    {
-                        target_index = i;
-                        break;
-                    }
-                }
-            }
-
-            if (target_index != -1 && target_index != state->list_state->selected)
-            {
-                state->list_state->selected = target_index;
-                // Update visible window
-                if (state->list_state->selected >= state->list_state->last_visible)
-                {
-                    state->list_state->last_visible = state->list_state->selected + 1;
-                    state->list_state->first_visible = state->list_state->last_visible - max_row_count;
-                    if (state->list_state->first_visible < 0)
-                        state->list_state->first_visible = 0;
-                }
-                state->redraw = 1;
-            }
+            state->list_state->selected = target;
+            ListState_InitView(state->list_state, max_row_count);
+            state->redraw = 1;
         }
     }
 }

@@ -47,6 +47,32 @@ setup() {
     [[ "$output" != *"cannot be assigned to more than one button"* ]]
 }
 
+# issue 69 - L1/R1 alphabetic scroll navigation
+
+@test "--alphabetic-scroll flag is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --alphabetic-scroll
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"unrecognized option"* ]]
+}
+
+@test "-S short flag is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml -S
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"unrecognized option"* ]]
+}
+
+@test "alphabetic_scroll JSON property is accepted" {
+    JSONFILE="$(mktemp "${BATS_TEST_TMPDIR:-/tmp}/minui-list-scroll.XXXXXX")"
+    printf '{"alphabetic_scroll": true, "items": []}' > "$JSONFILE"
+    run "$BIN" --file "$JSONFILE" --format json --item-key items
+    [ "$status" -eq 1 ]
+    # parses past the JSON schema (the key is accepted) and reaches item validation
+    [[ "$output" == *"No selectable items found"* ]]
+    [[ "$output" != *"Failed to parse JSON"* ]]
+}
+
 # surviving validation
 
 @test "invalid format is rejected" {
