@@ -47,6 +47,22 @@ setup() {
     [[ "$output" != *"cannot be assigned to more than one button"* ]]
 }
 
+# issue 69 - L1/R1 alphabetic scroll navigation
+
+@test "--alphabetic-scroll flag is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --alphabetic-scroll
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"unrecognized option"* ]]
+}
+
+@test "-S short flag is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml -S
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"unrecognized option"* ]]
+}
+
 # surviving validation
 
 @test "invalid format is rejected" {

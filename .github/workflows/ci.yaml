@@ -66,7 +66,7 @@ jobs:
       - name: Move the codebase to the correct location
         run: |
           mkdir -p union-${{ matrix.toolchain }}-toolchain/workspace/repo
-          mv *.c Makefile union-${{ matrix.toolchain }}-toolchain/workspace/repo
+          mv *.c *.h Makefile union-${{ matrix.toolchain }}-toolchain/workspace/repo
 
       - name: Pull the toolchain
         run: |
@@ -100,6 +100,16 @@ jobs:
         with:
           name: ${{ steps.binary.outputs.filename }}
           path: ${{ steps.binary.outputs.filename }}
+
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Run unit tests
+        run: make test
 
   macos:
     name: macos
@@ -151,7 +161,7 @@ jobs:
   release:
     name: release
     runs-on: ubuntu-24.04-arm
-    needs: [ci, macos]
+    needs: [ci, unit-tests, macos]
     steps:
       - name: Checkout
         uses: actions/checkout@v7

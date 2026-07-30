@@ -42,12 +42,17 @@ The following keyboard keys are mapped to controller buttons:
 | B | A |
 | X | W |
 | Y | Q |
+| L1 | E |
+| R1 | R |
 | Start | Enter |
 | Select | ' (apostrophe) |
 | Menu | Space |
 | Power | Backspace |
 
-The L1/L2/R1/R2/L3/R3 and Plus/Minus buttons are not mapped.
+L1 (E) and R1 (R) drive alphabetical scrolling when `--alphabetic-scroll` is enabled: R1 jumps
+to the next letter group and L1 to the previous one, wrapping around at the ends of the list.
+
+The L2/R2/L3/R3 and Plus/Minus buttons are not mapped.
 
 ## Quitting
 
