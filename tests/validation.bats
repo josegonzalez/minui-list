@@ -88,3 +88,44 @@ setup() {
     [ "$status" -eq 1 ]
     [[ "$output" == *"No input provided"* ]]
 }
+
+# issue 123 - segfault on JSON array of objects without --item-key
+#
+# invalid JSON item shapes used to reach the renderer with empty names and
+# crash (EXC_BAD_ACCESS, exit 139). They must now fail gracefully instead.
+
+@test "top-level array of objects is rejected (no segfault)" {
+    JSONFILE="$(mktemp "${BATS_TEST_TMPDIR:-/tmp}/minui-list-json.XXXXXX")"
+    printf '[{"name":"Apple"},{"name":"Banana"}]' > "$JSONFILE"
+    run "$BIN" --file "$JSONFILE" --format json
+    [ "$status" -eq 1 ]
+    [ "$status" -ne 139 ]
+    [[ "$output" == *"is not a string"* ]]
+}
+
+@test "empty string in a top-level array is rejected" {
+    JSONFILE="$(mktemp "${BATS_TEST_TMPDIR:-/tmp}/minui-list-json.XXXXXX")"
+    printf '[""]' > "$JSONFILE"
+    run "$BIN" --file "$JSONFILE" --format json
+    [ "$status" -eq 1 ]
+    [ "$status" -ne 139 ]
+    [[ "$output" == *"empty name"* ]]
+}
+
+@test "strings under --item-key are rejected (no segfault)" {
+    JSONFILE="$(mktemp "${BATS_TEST_TMPDIR:-/tmp}/minui-list-json.XXXXXX")"
+    printf '{"items":["Apple","Banana"]}' > "$JSONFILE"
+    run "$BIN" --file "$JSONFILE" --format json --item-key items
+    [ "$status" -eq 1 ]
+    [ "$status" -ne 139 ]
+    [[ "$output" == *"is not an object"* ]]
+}
+
+@test "nameless object under --item-key is rejected" {
+    JSONFILE="$(mktemp "${BATS_TEST_TMPDIR:-/tmp}/minui-list-json.XXXXXX")"
+    printf '{"items":[{}]}' > "$JSONFILE"
+    run "$BIN" --file "$JSONFILE" --format json --item-key items
+    [ "$status" -eq 1 ]
+    [ "$status" -ne 139 ]
+    [[ "$output" == *"missing a name"* ]]
+}
