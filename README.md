@@ -194,7 +194,7 @@ item 3
 
 ##### Array
 
-A json array. May or may not be formatted.
+A json array of strings. May or may not be formatted.
 
 ```json
 [
@@ -203,6 +203,11 @@ A json array. May or may not be formatted.
   "item 3"
 ]
 ```
+
+Every element must be a non-empty string. To supply object items (with names,
+options, or features), use the object form below with `--item-key`. Passing an
+array of objects, an empty string, or any non-string element fails with a
+validation error rather than rendering.
 
 ##### Object
 
@@ -281,6 +286,11 @@ Item example:
 > If items are specified in json format, the item list _must_ have at
 > least one selectable, non-header item.
 > The `minui-list` binary will exit with an error if that is not the case.
+
+> [!WARNING]
+> Every item under `--item-key` must be an object with a non-empty `name`.
+> A non-object element, or an item without a name, fails with a validation
+> error rather than rendering.
 
 ### Exit Codes
 

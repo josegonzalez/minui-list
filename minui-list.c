@@ -540,6 +540,56 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
 
     size_t item_count = json_array_get_count(items_array);
 
+    // validate each element's shape before allocating or rendering.
+    // invalid input (objects in a top-level array, or non-object/nameless
+    // items under an item key) would otherwise yield empty item names that
+    // crash the renderer, so fail here the way other malformed input does.
+    for (size_t i = 0; i < item_count; i++)
+    {
+        JSON_Value *element = json_array_get_value(items_array, i);
+        char error_message[256];
+        error_message[0] = '\0';
+
+        if (strlen(item_key) == 0)
+        {
+            if (json_value_get_type(element) != JSONString)
+            {
+                snprintf(error_message, sizeof(error_message), "Array item %zu is not a string; use --item-key for object lists", i);
+            }
+            else
+            {
+                const char *element_name = json_value_get_string(element);
+                if (element_name == NULL || element_name[0] == '\0')
+                {
+                    snprintf(error_message, sizeof(error_message), "Array item %zu has an empty name", i);
+                }
+            }
+        }
+        else
+        {
+            if (json_value_get_type(element) != JSONObject)
+            {
+                snprintf(error_message, sizeof(error_message), "Item %zu under key '%s' is not an object", i, item_key);
+            }
+            else
+            {
+                const char *element_name = json_object_get_string(json_value_get_object(element), "name");
+                if (element_name == NULL || element_name[0] == '\0')
+                {
+                    snprintf(error_message, sizeof(error_message), "Item %zu under key '%s' is missing a name", i, item_key);
+                }
+            }
+        }
+
+        if (error_message[0] != '\0')
+        {
+            log_error(error_message);
+            json_value_free(root_value);
+            free(state);
+            return NULL;
+        }
+    }
+
     state->items = malloc(sizeof(struct ListItem) * item_count);
     state->has_options = false;
 
