@@ -66,7 +66,7 @@ jobs:
       - name: Move the codebase to the correct location
         run: |
           mkdir -p union-${{ matrix.toolchain }}-toolchain/workspace/repo
-          mv *.c Makefile union-${{ matrix.toolchain }}-toolchain/workspace/repo
+          mv *.c *.h Makefile union-${{ matrix.toolchain }}-toolchain/workspace/repo
 
       - name: Pull the toolchain
         run: |
