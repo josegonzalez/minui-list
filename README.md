@@ -21,7 +21,9 @@ Binaries are built against one of two firmwares. Most devices build against MinU
 - `tg5040` and `my355` run both firmwares, so they have a MinUI build (`minui-list-tg5040`, `minui-list-my355`) and a NextUI build (`minui-list-tg5040-nextui`, `minui-list-my355-nextui`).
 - `tg5050` and `h700` are NextUI-only and build as `minui-list-tg5050-nextui` and `minui-list-h700-nextui`.
 
-To build a NextUI variant, use its platform id inside the matching toolchain, for example `PLATFORM=tg5040-nextui make`. See [docs/nextui.md](docs/nextui.md) for the platform/toolchain matrix and how the NextUI builds are wired. For the native macOS build used by the test suite, see [docs/macos.md](docs/macos.md).
+The `-nextui` binaries honor the device's NextUI theme, re-coloring the list from the user's chosen theme colors and font instead of the fixed MinUI greyscale palette.
+
+To build a NextUI variant, use its platform id inside the matching toolchain, for example `PLATFORM=tg5040-nextui make`. See [docs/nextui.md](docs/nextui.md) for the platform/toolchain matrix, the theming details, and how the NextUI builds are wired. For the native macOS build used by the test suite, see [docs/macos.md](docs/macos.md).
 
 ## Usage
 

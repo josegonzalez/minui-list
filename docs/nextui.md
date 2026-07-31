@@ -24,7 +24,10 @@ The Makefile keeps the build platform id (`PLATFORM`) separate from the upstream
 
 `-DPLATFORM` is compiled into the on-device `SYSTEM_PATH` and `USERDATA_PATH` (`.system/<PLATFORM>` and `.userdata/<PLATFORM>`), so it is driven by `WORKSPACE`. A `tg5040-nextui` binary therefore reports `tg5040` at runtime and resolves the same on-card paths as the device firmware.
 
-The only source-level NextUI difference is in `minui-list.c`: under `-DPLATFORM_NEXTUI`, `PLAT_isOnline` is mapped to `PWR_isOnline`, which NextUI's SDK uses for online detection.
+The source-level NextUI differences all live in `minui-list.c`, gated by `-DPLATFORM_NEXTUI`:
+
+- `PLAT_isOnline` is mapped to `PWR_isOnline`, which NextUI's SDK uses for online detection.
+- the UI is re-colored from the user's NextUI theme (see [Theming](#theming) below).
 
 ### GLES and audio libraries
 
@@ -32,6 +35,26 @@ NextUI toolchains install `libmsettings` and the GLES stack under `/opt/nextui`.
 
 - `tg5040-nextui` and `h700-nextui`: `-lGLESv2 -lsamplerate`
 - `tg5050-nextui` and `my355-nextui`: `-lGLESv2 -lmali -lsamplerate` (their `libGLESv2` is a stub backed by a standalone mali blob that must be linked explicitly)
+
+## Theming
+
+NextUI lets the user pick theme colors and a font (stored in `minuisettings.txt`). The `-nextui` binaries honor that theme, so a `minui-list` page matches the rest of the NextUI menu instead of the fixed greyscale MinUI palette. MinUI and macOS builds are unaffected: every theme reference is confined to `#ifdef PLATFORM_NEXTUI` helpers in `minui-list.c`, so those builds still use the greyscale palette and compile unchanged.
+
+Nothing new has to be initialized. The existing `GFX_init(MODE_MAIN)` call already runs the NextUI SDK's `CFG_init`, which reads the theme and populates `THEME_COLOR1..7` (screen-mapped) and `THEME_COLOR1_255..7_255` (packed `0xRRGGBBAA`), the themed `font.*`, and the themed clear color. The app just references those globals when drawing. NextUI's color slots (`config.h`) map to the UI as follows:
+
+| Theme slot (default)              | Where it is used                                                        |
+|-----------------------------------|-------------------------------------------------------------------------|
+| `COLOR_MAIN` (white)              | the selected-row pill and the focused filter-keyboard key               |
+| `COLOR_ACCENT` (magenta)          | the filter match-highlight rectangle                                    |
+| `COLOR_ACCENT2` (dark navy)       | the option-value track pill, the keyboard input field, unfocused keys   |
+| `COLOR_LIST_TEXT` (white)         | unselected row text, option-value text, the title, keyboard input/labels |
+| `COLOR_LIST_TEXT_SELECTED` (black)| selected row text, match-highlight text, focused-key text               |
+| `COLOR_HINT` (white)              | hardware/button hints (already themed by the SDK's `GFX_blitButton*`)   |
+| `COLOR_BACKGROUND` (black)        | the default background fill, when no per-item background is set          |
+
+The disabled and header/unselectable rows keep static greys, matching NextUI's own menus. Fonts follow the theme automatically: when no `--font-*` override is given, `open_fonts()` falls back to the SDK `font.*`, which `GFX_init` loaded from the themed font. The background falls back to `COLOR_BACKGROUND` only when an item sets no `background_color`/`background_image`; explicit `--background-color`, JSON `background_color`, and `background_image` still override it. Under the default theme the result looks the same as the MinUI greyscale; the theme only diverges once the user customizes it.
+
+The row-color precedence (which text role a row uses) is factored into the SDL-free `list_theme.c` module and unit tested by `tests/list_theme_test.c` (run via `make test`). `tests/makefile.bats` asserts `list_theme.c` is compiled into every platform.
 
 ## Building
 

@@ -25,6 +25,7 @@
 #include "list_keyboard.h"
 #include "list_nav.h"
 #include "list_scroll.h"
+#include "list_theme.h"
 
 // the largest image column width is a third of the screen width, per issue #13
 #define IMAGE_MAX_WIDTH_DIVISOR 3
@@ -38,6 +39,161 @@
 #ifdef PLATFORM_NEXTUI
 #define PLAT_isOnline PWR_isOnline
 #endif
+
+// Theme helpers. The -nextui builds honor the user's NextUI theme colors
+// (COLOR_MAIN..COLOR_BACKGROUND, exposed by the SDK as THEME_COLOR* /
+// THEME_COLOR*_255 after GFX_init loads the theme), while the MinUI/macOS builds
+// keep the greyscale palette. Every NextUI-only symbol (THEME_COLOR*,
+// uintToColour, GFX_blitPillDark/Color, RGB_WHITE) is confined to these helpers
+// behind PLATFORM_NEXTUI so the other builds compile unchanged. The mapping from
+// list row state to a text role lives in list_theme.c (unit tested); these helpers
+// turn a role or draw intent into the actual color/blit.
+
+// theme_row_text_color maps a list row's text role to its color. Only the normal
+// and selected roles are theme-driven; the muted/disabled greys are shared with
+// MinUI (NextUI keeps static greys for those too).
+static SDL_Color theme_row_text_color(ListTextRole role)
+{
+    switch (role)
+    {
+    case LIST_TEXT_SELECTED:
+#ifdef PLATFORM_NEXTUI
+        return uintToColour(THEME_COLOR5_255);
+#else
+        return COLOR_BLACK;
+#endif
+    case LIST_TEXT_NORMAL:
+#ifdef PLATFORM_NEXTUI
+        return uintToColour(THEME_COLOR4_255);
+#else
+        return COLOR_WHITE;
+#endif
+    case LIST_TEXT_DISABLED:
+        return (SDL_Color){TRIAD_DARK_GRAY};
+    case LIST_TEXT_SELECTED_DISABLED:
+        return (SDL_Color){TRIAD_LIGHT_GRAY};
+    case LIST_TEXT_MUTED:
+    default:
+        return COLOR_LIGHT_TEXT;
+    }
+}
+
+// theme_title_text_color returns the title color. Over a background image the
+// title stays white (drawn on a black pill for legibility over arbitrary art);
+// otherwise it follows the theme's list text color.
+static SDL_Color theme_title_text_color(bool has_bg_image)
+{
+    if (has_bg_image)
+        return COLOR_WHITE;
+#ifdef PLATFORM_NEXTUI
+    return uintToColour(THEME_COLOR4_255);
+#else
+    return COLOR_GRAY;
+#endif
+}
+
+// theme_accent_u32 returns the filter match-highlight fill color: the theme accent
+// under NextUI, the app's gold accent under MinUI.
+static uint32_t theme_accent_u32(SDL_Surface *dst)
+{
+#ifdef PLATFORM_NEXTUI
+    (void)dst;
+    return THEME_COLOR2;
+#else
+    return SDL_MapRGB(dst->format, TRIAD_FILTER_HIGHLIGHT);
+#endif
+}
+
+// theme_accent_text_color returns the text color drawn over the accent highlight.
+// There is no theme "text on accent" slot, so the selected-text foreground (the
+// theme's readable foreground) is the closest match under NextUI.
+static SDL_Color theme_accent_text_color(void)
+{
+#ifdef PLATFORM_NEXTUI
+    return uintToColour(THEME_COLOR5_255);
+#else
+    return COLOR_BLACK;
+#endif
+}
+
+// theme_background_u32 returns the default background fill. NextUI honors the
+// theme background; MinUI fills black. Explicit per-item background colors/images
+// still override this at the call site.
+static uint32_t theme_background_u32(SDL_Surface *dst)
+{
+#ifdef PLATFORM_NEXTUI
+    (void)dst;
+    return THEME_COLOR7;
+#else
+    return SDL_MapRGBA(dst->format, 0, 0, 0, 255);
+#endif
+}
+
+// blit_selected_pill draws the selection pill: tinted with the theme's main color
+// under NextUI, the plain white pill asset under MinUI.
+static void blit_selected_pill(int asset, SDL_Surface *dst, SDL_Rect *rect)
+{
+#ifdef PLATFORM_NEXTUI
+    GFX_blitPillDark(asset, dst, rect);
+#else
+    GFX_blitPill(asset, dst, rect);
+#endif
+}
+
+// blit_value_track_pill draws the darker full-width track behind a selected row's
+// option value: tinted with the theme's secondary accent under NextUI.
+static void blit_value_track_pill(int asset, SDL_Surface *dst, SDL_Rect *rect)
+{
+#ifdef PLATFORM_NEXTUI
+    GFX_blitPillColor(asset, dst, rect, THEME_COLOR3, RGB_WHITE);
+#else
+    GFX_blitPill(asset, dst, rect);
+#endif
+}
+
+// theme_kb_input_bg / theme_kb_input_text color the filter keyboard's input field
+// (secondary accent track with list text under NextUI).
+static uint32_t theme_kb_input_bg(SDL_Surface *dst)
+{
+#ifdef PLATFORM_NEXTUI
+    (void)dst;
+    return THEME_COLOR3;
+#else
+    return SDL_MapRGB(dst->format, TRIAD_DARK_GRAY);
+#endif
+}
+
+static SDL_Color theme_kb_input_text(void)
+{
+#ifdef PLATFORM_NEXTUI
+    return uintToColour(THEME_COLOR4_255);
+#else
+    return COLOR_WHITE;
+#endif
+}
+
+// theme_kb_key_bg / theme_kb_key_text color a keyboard key. A focused key mirrors
+// the selection pill (main + selected text); an unfocused key uses the secondary
+// accent track with the list text.
+static uint32_t theme_kb_key_bg(SDL_Surface *dst, bool focused)
+{
+#ifdef PLATFORM_NEXTUI
+    (void)dst;
+    return focused ? THEME_COLOR1 : THEME_COLOR3;
+#else
+    return focused ? SDL_MapRGB(dst->format, TRIAD_WHITE)
+                   : SDL_MapRGB(dst->format, TRIAD_DARK_GRAY);
+#endif
+}
+
+static SDL_Color theme_kb_key_text(bool focused)
+{
+#ifdef PLATFORM_NEXTUI
+    return focused ? uintToColour(THEME_COLOR5_255) : uintToColour(THEME_COLOR4_255);
+#else
+    return focused ? COLOR_BLACK : COLOR_WHITE;
+#endif
+}
 
 SDL_Surface *screen = NULL;
 
@@ -2321,20 +2477,25 @@ bool draw_background(SDL_Surface *screen, struct AppState *state)
     // nothing selected (e.g. an active filter matched no items): plain background
     if (state->list_state->selected < 0)
     {
-        SDL_FillRect(screen, NULL, SDL_MapRGBA(screen->format, 0, 0, 0, 255));
+        SDL_FillRect(screen, NULL, theme_background_u32(screen));
         return false;
     }
 
-    // render a background color
-    char hex_color[1024] = "#000000";
+    // render a background color. an explicit per-item or --background-color value
+    // (both populate features.background_color) wins; otherwise fall back to the
+    // theme background (black on MinUI, COLOR_BACKGROUND on NextUI).
     if (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_color[0] != '\0')
     {
+        char hex_color[1024] = "#000000";
         strncpy(hex_color, state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_color, sizeof(hex_color));
+        SDL_Color background_color = hex_to_sdl_color(hex_color);
+        uint32_t color = SDL_MapRGBA(screen->format, background_color.r, background_color.g, background_color.b, 255);
+        SDL_FillRect(screen, NULL, color);
     }
-
-    SDL_Color background_color = hex_to_sdl_color(hex_color);
-    uint32_t color = SDL_MapRGBA(screen->format, background_color.r, background_color.g, background_color.b, 255);
-    SDL_FillRect(screen, NULL, color);
+    else
+    {
+        SDL_FillRect(screen, NULL, theme_background_u32(screen));
+    }
 
     bool should_draw_background_image = false;
     if (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_image_exists && access(state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_image, F_OK) != -1)
@@ -2429,9 +2590,9 @@ static void draw_match_highlight(SDL_Surface *screen, TTF_Font *font,
         return;
 
     SDL_Rect hl = {base_x + prefix_w, base_y, match_w, match_h};
-    SDL_FillRect(screen, &hl, SDL_MapRGB(screen->format, TRIAD_FILTER_HIGHLIGHT));
+    SDL_FillRect(screen, &hl, theme_accent_u32(screen));
 
-    SDL_Surface *m = TTF_RenderUTF8_Blended(font, match, COLOR_BLACK);
+    SDL_Surface *m = TTF_RenderUTF8_Blended(font, match, theme_accent_text_color());
     if (m != NULL)
     {
         SDL_Rect mp = {base_x + prefix_w, base_y, m->w, m->h};
@@ -2450,13 +2611,13 @@ static void draw_filter_keyboard(SDL_Surface *screen, struct AppState *state)
 
     // input field background
     SDL_Rect input_bg = {SCALE1(PADDING), g.input_y, screen->w - SCALE1(PADDING) * 2, g.input_h};
-    SDL_FillRect(screen, &input_bg, SDL_MapRGB(screen->format, TRIAD_DARK_GRAY));
+    SDL_FillRect(screen, &input_bg, theme_kb_input_bg(screen));
 
     // current filter text, clipped to the field and tail-aligned so the most
     // recently typed characters stay visible
     if (state->filter_text[0] != '\0' && kb_font != NULL)
     {
-        SDL_Surface *input = TTF_RenderUTF8_Blended(kb_font, state->filter_text, COLOR_WHITE);
+        SDL_Surface *input = TTF_RenderUTF8_Blended(kb_font, state->filter_text, theme_kb_input_text());
         if (input != NULL)
         {
             int inner_x = SCALE1(PADDING + BUTTON_PADDING);
@@ -2522,13 +2683,12 @@ static void draw_filter_keyboard(SDL_Surface *screen, struct AppState *state)
                 cur_w,
                 g.key_size};
 
-            Uint32 bg = focused ? SDL_MapRGB(screen->format, TRIAD_WHITE)
-                                : SDL_MapRGB(screen->format, TRIAD_DARK_GRAY);
+            Uint32 bg = theme_kb_key_bg(screen, focused);
             SDL_FillRect(screen, &key_pos, bg);
 
             if (kb_font != NULL)
             {
-                SDL_Color tc = focused ? COLOR_BLACK : COLOR_WHITE;
+                SDL_Color tc = theme_kb_key_text(focused);
                 SDL_Surface *kt = TTF_RenderUTF8_Blended(kb_font, key, tc);
                 if (kt != NULL)
                 {
@@ -2641,11 +2801,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
         }
 
         // draw the title
-        SDL_Color text_color = COLOR_GRAY;
-        if (should_draw_background_image)
-        {
-            text_color = COLOR_WHITE;
-        }
+        SDL_Color text_color = theme_title_text_color(should_draw_background_image);
         SDL_Surface *text = TTF_RenderUTF8_Blended(state->fonts.medium, truncated_title_text, text_color);
         SDL_Rect pos = {
             title_x_pos,
@@ -2729,15 +2885,13 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             snprintf(display_text, sizeof(display_text), "%s", state->list_state->items[i].name);
         }
 
-        SDL_Color text_color = COLOR_WHITE;
-        if (state->list_state->items[i].features.disabled)
-        {
-            text_color = (SDL_Color){TRIAD_DARK_GRAY};
-        }
-        if (state->list_state->items[i].features.is_header || state->list_state->items[i].features.unselectable)
-        {
-            text_color = COLOR_LIGHT_TEXT;
-        }
+        // resolve the row text color from its state (selected/disabled/muted).
+        // ListTheme_RowTextRole captures the precedence; theme_row_text_color maps
+        // the role to the greyscale palette or, on -nextui builds, the theme colors.
+        SDL_Color text_color = theme_row_text_color(ListTheme_RowTextRole(
+            j == selected_row,
+            state->list_state->items[i].features.disabled,
+            state->list_state->items[i].features.is_header || state->list_state->items[i].features.unselectable));
 
         int color_placeholder_height;
         TTF_SizeUTF8(state->fonts.medium, " ", NULL, &color_placeholder_height);
@@ -2820,16 +2974,12 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
 
         if (j == selected_row)
         {
-            text_color = COLOR_BLACK;
+            // text_color is already resolved above (with is_selected set); the
+            // selected branch only records the row's state for input handling.
             current_item_is_enabled = state->list_state->items[i].features.disabled;
-            if (state->list_state->items[i].features.disabled)
-            {
-                text_color = (SDL_Color){TRIAD_LIGHT_GRAY};
-            }
             if (state->list_state->items[i].features.is_header || state->list_state->items[i].features.unselectable)
             {
                 current_item_is_header = true;
-                text_color = COLOR_LIGHT_TEXT;
             }
             if (state->list_state->items[i].features.can_disable)
             {
@@ -2876,10 +3026,10 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
 
             if (strcmp(display_selected_text, "") != 0)
             {
-                GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding), screen->w - SCALE1(PADDING + BUTTON_MARGIN) - image_col_space, SCALE1(PILL_SIZE)});
+                blit_value_track_pill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding), screen->w - SCALE1(PADDING + BUTTON_MARGIN) - image_col_space, SCALE1(PILL_SIZE)});
             }
 
-            GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding), pill_width, SCALE1(PILL_SIZE)});
+            blit_selected_pill(ASSET_WHITE_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding), pill_width, SCALE1(PILL_SIZE)});
         }
 
         SDL_Surface *text;
@@ -3001,11 +3151,10 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             initial_cube_x_pos = screen->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space - image_col_space;
             if (j != 0 || strlen(state->title) > 0)
             {
-                SDL_Color selected_text_color = COLOR_WHITE;
-                if (state->list_state->items[i].features.disabled || state->list_state->items[i].features.unselectable)
-                {
-                    selected_text_color = COLOR_LIGHT_TEXT;
-                }
+                SDL_Color selected_text_color = theme_row_text_color(
+                    (state->list_state->items[i].features.disabled || state->list_state->items[i].features.unselectable)
+                        ? LIST_TEXT_MUTED
+                        : LIST_TEXT_NORMAL);
                 SDL_Surface *selected_text;
                 selected_text = TTF_RenderUTF8_Blended(state->fonts.large, display_selected_text, selected_text_color);
                 pos = (SDL_Rect){screen->w - selected_text->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space - image_col_space, pos.y, selected_text->w, selected_text->h};
