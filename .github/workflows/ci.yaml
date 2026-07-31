@@ -24,7 +24,6 @@ jobs:
       matrix:
         toolchain:
           # - gkdpixel deprecated, but also i386 only so it won't build without buildx
-          - h700
           - m17 # (deprecated)
           - magicmini
           - miyoomini # (deprecated)
@@ -35,14 +34,23 @@ jobs:
           - rgb30 # (deprecated)
           # - tg3040 now merged with tg5040, so we can't build it separately
           - tg5040
-          - tg5050
           - trimuismart # (deprecated)
           - zero28
+          # NextUI-specific builds (device also runs MinUI for tg5040/my355;
+          # tg5050/h700 are NextUI-only)
+          - tg5040-nextui
+          - my355-nextui
+          - tg5050-nextui
+          - h700-nextui
         include:
-          - toolchain: h700
-            toolchain_repo: LoveRetro/h700-toolchain
-          - toolchain: tg5050
+          - toolchain: tg5040-nextui
+            toolchain_repo: LoveRetro/tg5040-toolchain
+          - toolchain: my355-nextui
+            toolchain_repo: LoveRetro/my355-toolchain
+          - toolchain: tg5050-nextui
             toolchain_repo: LoveRetro/tg5050-toolchain
+          - toolchain: h700-nextui
+            toolchain_repo: LoveRetro/h700-toolchain
 
     steps:
       - name: Checkout
