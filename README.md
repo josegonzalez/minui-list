@@ -57,6 +57,21 @@ minui-list --file list.json --write-location file.txt
 minui-list --file list.json --background-color "#ababab"
 minui-list --file list.json --background-image "full/path/to/image.png"
 
+# a per-item image can be shown on the right-hand side of each row (json only)
+# it is scaled to fit within a third of the screen width and the row height,
+# and the item text is truncated to the remaining space
+# images are set per item via the "features.images" property below
+
+# an item can supply resolution-specific images via its "features.images" map
+# --screen-resolution selects which entry to use (a "WIDTHxHEIGHT" string)
+# by default the device resolution is auto-detected, so this only needs to be
+# set to override the detected value
+minui-list --file list.json --screen-resolution 1280x720
+
+# show a fallback image when an item that specifies an image has no
+# currently-existing file at its resolved path
+minui-list --file list.json --fallback-image "full/path/to/fallback.png"
+
 # specify a title for the list page
 # by default, the title is empty
 minui-list --file list.json --title "Some Title"
@@ -271,6 +286,7 @@ Item properties:
 - features.hide_action: (optional, type: `boolean`, default: `false`) whether to show the action button on this entry or not
 - features.hide_cancel: (optional, type: `boolean`, default: `false`) whether to show the cancel button on this entry or not
 - features.hide_confirm: (optional, type: `boolean`, default: `false`) whether to show the confirm button on this entry or not
+- features.images: (optional, type: `object`, default: `{}`) a map of resolution key to image path for an image shown on the right-hand side of the item's row. Keys are either `default` or a `WIDTHxHEIGHT` string (e.g. `1280x720`); a single image is expressed as `{"default": "full/path/to/image.png"}`. The entry matching the active resolution is used, falling back to the `default` entry when there is no exact match. The active resolution is auto-detected from the device and can be overridden with `--screen-resolution`. Each image is scaled down to fit within a third of the screen width and the row height (aspect ratio preserved; images already smaller are shown at their native size), and the item text is truncated to the remaining space. If the resolved file does not exist, nothing is drawn (or the `--fallback-image`, if set); the path is re-checked continuously, so the image appears as soon as the file exists.
 - features.show_confirm: (optional, type: `boolean`, default: `false`) whether to show the confirm button on this entry or not
 - features.is_header: (optional, type: `boolean`, default: `false`) allows specifying that an item is a header
 - features.unselectable: (optional, type: `boolean`, default: `false`) whether an item is selectable or not
@@ -297,6 +313,10 @@ Item example:
     "hide_action": false,
     "hide_cancel": false,
     "hide_confirm": false,
+    "images": {
+      "default": "full/path/to/default.png",
+      "1280x720": "full/path/to/1280x720.png"
+    },
     "is_header": false,
     "unselectable": false
   }
@@ -342,7 +362,7 @@ bats tests/
 MINUI_LIST_BIN=./minui-list-macos bats tests/
 ```
 
-Navigation logic that does not depend on a display, such as the L1/R1 alphabetic letter-jump, is covered by pure C unit tests in `tests/list_nav_test.c`. They build with the host compiler and need no SDL or cross toolchain:
+Logic that does not depend on a display is covered by pure C unit tests under `tests/`, such as the L1/R1 alphabetic letter-jump (`tests/list_nav_test.c`) and the per-item image scaling and resolution selection (`tests/list_image_test.c`). They build with the host compiler and need no SDL or cross toolchain:
 
 ```shell
 # build and run the C unit tests

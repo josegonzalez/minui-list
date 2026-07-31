@@ -20,8 +20,12 @@
 #include "utils.h"
 
 #include "list_hint.h"
+#include "list_image.h"
 #include "list_nav.h"
 #include "list_scroll.h"
+
+// the largest image column width is a third of the screen width, per issue #13
+#define IMAGE_MAX_WIDTH_DIVISOR 3
 
 // Platform compatibility: tg5050 (NextUI) uses PWR_isOnline instead of PLAT_isOnline
 #ifdef PLATFORM_NEXTUI
@@ -145,6 +149,22 @@ struct ListItem
     int initial_selected;
     // the features of the item
     struct ListItemFeature features;
+
+    // whether the item specifies a right-hand-side image (image/images, in the
+    // item object or under features)
+    bool has_image;
+    // the per-resolution image variants (heap array sized to image_variant_count)
+    struct ImageVariant *image_variants;
+    // the number of image variants
+    int image_variant_count;
+
+    // the image path selected for the active screen resolution, fixed for the
+    // run (empty when no variant matches and there is no "default")
+    char resolved_path[1024];
+    // the path image_surface was loaded from (empty when nothing is cached)
+    char image_active_path[1024];
+    // the cached, pre-scaled image surface (NULL when nothing is loaded)
+    SDL_Surface *image_surface;
 };
 
 // ListState holds the state of the list
@@ -203,6 +223,12 @@ struct AppState
     char background_image[1024];
     // the background color to display
     char background_color[1024];
+    // the screen resolution ("WIDTHxHEIGHT") used to pick per-item images from
+    // an "images" map; empty means auto-detect from the device resolution
+    char screen_resolution[32];
+    // a full path to a fallback image shown when an item that specifies an image
+    // has no currently-existing resolved file; empty means no fallback
+    char fallback_image[1024];
     // the button to display on the Confirm button
     char confirm_button[1024];
     // the text to display on the Confirm button
@@ -360,6 +386,108 @@ static int compare_items_alphabetic(const void *a, const void *b)
     return strcasecmp(item_a->name, item_b->name);
 }
 
+// validate_features_images checks the optional "images" map on an item's
+// "features" object: it must be an object whose values are all strings. Keys are
+// left unvalidated so new resolution strings stay forward-compatible. Writes a
+// human-readable message into err and returns false on the first problem;
+// returns true when the features object is NULL or the key is absent or
+// well-formed.
+static bool validate_features_images(JSON_Object *features, const char *item_desc, char *err, size_t err_size)
+{
+    if (features == NULL)
+        return true;
+
+    JSON_Value *images_value = json_object_get_value(features, "images");
+    if (images_value == NULL)
+        return true;
+
+    if (json_value_get_type(images_value) != JSONObject)
+    {
+        snprintf(err, err_size, "%s features.images must be an object mapping resolution to path", item_desc);
+        return false;
+    }
+
+    JSON_Object *images = json_value_get_object(images_value);
+    size_t images_count = json_object_get_count(images);
+    for (size_t k = 0; k < images_count; k++)
+    {
+        if (json_value_get_type(json_object_get_value_at(images, k)) != JSONString)
+        {
+            const char *key = json_object_get_name(images, k);
+            snprintf(err, err_size, "%s features.images entry '%s' must be a string", item_desc, key ? key : "");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// ListItem_InitImage resets a list item's per-item image fields to their empty
+// defaults. Called from every item-construction branch so items that do not use
+// images (text format, string arrays, objects without image keys) are safe to
+// render and free.
+static void ListItem_InitImage(struct ListItem *item)
+{
+    item->has_image = false;
+    item->image_variants = NULL;
+    item->image_variant_count = 0;
+    item->resolved_path[0] = '\0';
+    item->image_active_path[0] = '\0';
+    item->image_surface = NULL;
+}
+
+// ListItem_UpsertVariant sets or replaces the path for a resolution key in the
+// item's variant array, growing it as needed (mirroring the options heap array).
+// Empty resolutions or paths are ignored, so callers can pass optional keys
+// directly.
+static void ListItem_UpsertVariant(struct ListItem *item, const char *resolution, const char *path)
+{
+    if (resolution == NULL || resolution[0] == '\0' || path == NULL || path[0] == '\0')
+        return;
+
+    for (int k = 0; k < item->image_variant_count; k++)
+    {
+        if (strcmp(item->image_variants[k].resolution, resolution) == 0)
+        {
+            strncpy(item->image_variants[k].path, path, sizeof(item->image_variants[k].path) - 1);
+            item->image_variants[k].path[sizeof(item->image_variants[k].path) - 1] = '\0';
+            return;
+        }
+    }
+
+    struct ImageVariant *grown = realloc(item->image_variants, sizeof(struct ImageVariant) * (item->image_variant_count + 1));
+    if (grown == NULL)
+        return;
+    item->image_variants = grown;
+
+    struct ImageVariant *variant = &item->image_variants[item->image_variant_count];
+    memset(variant, 0, sizeof(*variant));
+    strncpy(variant->resolution, resolution, sizeof(variant->resolution) - 1);
+    strncpy(variant->path, path, sizeof(variant->path) - 1);
+    item->image_variant_count++;
+}
+
+// ListItem_ReadImages reads the optional "images" map from an item's "features"
+// object into the item's variant array. Keys are resolution strings ("default"
+// or "WIDTHxHEIGHT"); the "default" entry is used when no exact match is found.
+static void ListItem_ReadImages(struct ListItem *item, JSON_Object *features)
+{
+    if (features == NULL)
+        return;
+
+    JSON_Object *images = json_object_get_object(features, "images");
+    if (images == NULL)
+        return;
+
+    size_t images_count = json_object_get_count(images);
+    for (size_t k = 0; k < images_count; k++)
+    {
+        const char *resolution = json_object_get_name(images, k);
+        const char *path = json_value_get_string(json_object_get_value_at(images, k));
+        ListItem_UpsertVariant(item, resolution, path);
+    }
+}
+
 // ListState_New creates a new ListState from a JSON file
 struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *confirm_text, const char *default_background_image, const char *default_background_color, struct AppState *app_state)
 {
@@ -447,6 +575,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 state->items[item_index].options = NULL;
                 state->items[item_index].selected = 0;
                 state->items[item_index].initial_selected = 0;
+                ListItem_InitImage(&state->items[item_index]);
                 state->items[item_index].features = (struct ListItemFeature){
                     .background_color = "",
                     .background_image = "",
@@ -605,10 +734,17 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             }
             else
             {
-                const char *element_name = json_object_get_string(json_value_get_object(element), "name");
+                JSON_Object *element_object = json_value_get_object(element);
+                const char *element_name = json_object_get_string(element_object, "name");
                 if (element_name == NULL || element_name[0] == '\0')
                 {
                     snprintf(error_message, sizeof(error_message), "Item %zu under key '%s' is missing a name", i, item_key);
+                }
+                else
+                {
+                    char item_desc[160];
+                    snprintf(item_desc, sizeof(item_desc), "Item %zu under key '%s'", i, item_key);
+                    validate_features_images(json_object_get_object(element_object, "features"), item_desc, error_message, sizeof(error_message));
                 }
             }
         }
@@ -640,6 +776,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             state->items[i].options = NULL;
             state->items[i].selected = 0;
             state->items[i].initial_selected = 0;
+            ListItem_InitImage(&state->items[i]);
             state->items[i].features = (struct ListItemFeature){
                 .background_color = "",
                 .background_image = "",
@@ -750,6 +887,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
             }
 
             state->items[i].initial_selected = state->items[i].selected;
+            ListItem_InitImage(&state->items[i]);
 
             state->items[i].features = (struct ListItemFeature){
                 .background_color = "",
@@ -1084,6 +1222,11 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     state->items[i].features.has_background_color = false;
                 }
             }
+
+            // build the right-hand-side image variants for this item from
+            // features.images
+            ListItem_ReadImages(&state->items[i], json_object_get_object(item, "features"));
+            state->items[i].has_image = state->items[i].image_variant_count > 0;
         }
     }
 
@@ -1157,6 +1300,40 @@ void ListState_InitView(struct ListState *state, int max_row_count)
     }
 }
 
+// ListState_ResolveImages selects each item's right-hand image path for the
+// active screen resolution. It must run after display init so FIXED_WIDTH and
+// FIXED_HEIGHT reflect the real device. The resolution key is the
+// --screen-resolution override when set, otherwise the device's native
+// WIDTHxHEIGHT.
+void ListState_ResolveImages(struct ListState *state, struct AppState *app_state)
+{
+    char resolution[32];
+    if (app_state->screen_resolution[0] != '\0')
+    {
+        strncpy(resolution, app_state->screen_resolution, sizeof(resolution) - 1);
+        resolution[sizeof(resolution) - 1] = '\0';
+    }
+    else
+    {
+        snprintf(resolution, sizeof(resolution), "%dx%d", FIXED_WIDTH, FIXED_HEIGHT);
+    }
+
+    for (size_t i = 0; i < state->item_count; i++)
+    {
+        struct ListItem *item = &state->items[i];
+        item->resolved_path[0] = '\0';
+        if (!item->has_image)
+            continue;
+
+        int idx = ImageVariant_SelectIndex(item->image_variants, item->image_variant_count, resolution);
+        if (idx >= 0)
+        {
+            strncpy(item->resolved_path, item->image_variants[idx].path, sizeof(item->resolved_path) - 1);
+            item->resolved_path[sizeof(item->resolved_path) - 1] = '\0';
+        }
+    }
+}
+
 // alphabetic_jump_target builds an SDL-free navigation view of the list and
 // returns the index to jump to for an alphabetic (L1/R1) letter jump. `forward`
 // selects next-letter (true) or previous-letter (false). Returns the current
@@ -1185,6 +1362,10 @@ static int alphabetic_jump_target(struct ListState *state, bool forward)
     return target;
 }
 
+// image_effective_path is defined alongside the other drawing helpers below but
+// is also polled here in handle_input, so it needs a forward declaration.
+void image_effective_path(struct ListItem *item, const char *fallback_image, char *out, size_t out_size);
+
 // handle_input interprets input events and mutates app state
 void handle_input(struct AppState *state)
 {
@@ -1196,6 +1377,23 @@ void handle_input(struct AppState *state)
         if (access(state->list_state->items[state->list_state->selected].features.background_image, F_OK) != -1)
         {
             state->list_state->items[state->list_state->selected].features.background_image_exists = true;
+            state->redraw = 1;
+        }
+    }
+
+    // poll visible items' right-hand images so a missing file that later appears
+    // (or a fallback that swaps in or out) forces a redraw; draw_screen then
+    // reloads the cached surface from the new effective path
+    for (int i = state->list_state->first_visible; i < state->list_state->last_visible; i++)
+    {
+        struct ListItem *item = &state->list_state->items[i];
+        if (!item->has_image)
+            continue;
+
+        char effective[1024];
+        image_effective_path(item, state->fallback_image, effective, sizeof(effective));
+        if (strcmp(effective, item->image_active_path) != 0)
+        {
             state->redraw = 1;
         }
     }
@@ -1644,6 +1842,94 @@ SDL_Surface *scale_surface(SDL_Surface *surface,
     return scaled;
 }
 
+// image_effective_path computes the path an item should currently display: its
+// resolved per-resolution path when that file exists, otherwise the global
+// fallback image when that exists, otherwise empty. Items without an image spec
+// always resolve to empty.
+void image_effective_path(struct ListItem *item, const char *fallback_image, char *out, size_t out_size)
+{
+    out[0] = '\0';
+    if (!item->has_image)
+        return;
+
+    if (item->resolved_path[0] != '\0' && access(item->resolved_path, F_OK) != -1)
+    {
+        strncpy(out, item->resolved_path, out_size - 1);
+        out[out_size - 1] = '\0';
+        return;
+    }
+
+    if (fallback_image != NULL && fallback_image[0] != '\0' && access(fallback_image, F_OK) != -1)
+    {
+        strncpy(out, fallback_image, out_size - 1);
+        out[out_size - 1] = '\0';
+    }
+}
+
+// ensure_item_image (re)loads and caches an item's scaled right-hand image when
+// the effective path changes. It frees any previously cached surface and records
+// image_active_path so a stable path (including an empty path or a load failure)
+// is not retried every frame. max_w/max_h bound the scaled size.
+void ensure_item_image(struct ListItem *item, const char *effective, int max_w, int max_h)
+{
+    if (strcmp(effective, item->image_active_path) == 0)
+        return;
+
+    if (item->image_surface != NULL)
+    {
+        SDL_FreeSurface(item->image_surface);
+        item->image_surface = NULL;
+    }
+
+    strncpy(item->image_active_path, effective, sizeof(item->image_active_path) - 1);
+    item->image_active_path[sizeof(item->image_active_path) - 1] = '\0';
+
+    if (effective[0] == '\0')
+        return;
+
+    SDL_Surface *surface = IMG_Load(effective);
+    if (surface == NULL)
+        return;
+
+    int dst_w = 0;
+    int dst_h = 0;
+    if (!ImageFit_Scale(surface->w, surface->h, max_w, max_h, &dst_w, &dst_h))
+    {
+        SDL_FreeSurface(surface);
+        return;
+    }
+
+    SDL_Surface *scaled;
+    if (dst_w == surface->w && dst_h == surface->h)
+    {
+        scaled = surface;
+    }
+    else
+    {
+#ifdef USE_SDL2
+        scaled = SDL_CreateRGBSurfaceWithFormat(0, dst_w, dst_h, 32, SDL_PIXELFORMAT_RGBA32);
+        if (scaled != NULL)
+        {
+            // copy source pixels (including alpha) rather than compositing, so
+            // the scaled copy keeps transparency for blending over the row
+            SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
+            SDL_BlitScaled(surface, NULL, scaled, NULL);
+        }
+#else
+        scaled = scale_surface(surface, dst_w, dst_h);
+#endif
+        SDL_FreeSurface(surface);
+    }
+
+    if (scaled == NULL)
+        return;
+
+#ifdef USE_SDL2
+    SDL_SetSurfaceBlendMode(scaled, SDL_BLENDMODE_BLEND);
+#endif
+    item->image_surface = scaled;
+}
+
 // draw_background draws the background of the list
 bool draw_background(SDL_Surface *screen, struct AppState *state)
 {
@@ -1912,6 +2198,22 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             available_width -= color_box_space;
         }
 
+        // load this item's right-hand image (if any) and reserve a column for it
+        // on the right, shrinking the content area so the name truncates to fit.
+        // the image is capped at a third of the screen width and the row height.
+        int image_col_space = 0;
+        {
+            struct ListItem *image_item = &state->list_state->items[i];
+            char image_effective[1024];
+            image_effective_path(image_item, state->fallback_image, image_effective, sizeof(image_effective));
+            ensure_item_image(image_item, image_effective, screen->w / IMAGE_MAX_WIDTH_DIVISOR, SCALE1(PILL_SIZE - 4));
+            if (image_item->image_surface != NULL)
+            {
+                image_col_space = image_item->image_surface->w + SCALE1(PADDING);
+                available_width -= image_col_space;
+            }
+        }
+
         char truncated_display_text[256];
         int text_width = GFX_truncateText(state->fonts.large, display_text, truncated_display_text, available_width, SCALE1(BUTTON_PADDING * 2));
 
@@ -1935,7 +2237,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             {
                 int value_width = 0;
                 TTF_SizeUTF8(state->fonts.large, display_selected_text, &value_width, NULL);
-                int value_left = screen->w - value_width - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
+                int value_left = screen->w - value_width - SCALE1(PADDING + BUTTON_PADDING) - color_box_space - image_col_space;
                 int value_viewport = value_left - SCALE1(PADDING + BUTTON_PADDING) - SCALE1(PADDING);
                 if (value_viewport < scroll_viewport)
                 {
@@ -1988,11 +2290,11 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             int pill_x_pos;
             if (strcmp(alignment, "center") == 0)
             {
-                pill_x_pos = (screen->w - pill_width) / 2;
+                pill_x_pos = (screen->w - image_col_space - pill_width) / 2;
             }
             else if (strcmp(alignment, "right") == 0)
             {
-                pill_x_pos = screen->w - pill_width - SCALE1(PADDING);
+                pill_x_pos = screen->w - pill_width - SCALE1(PADDING) - image_col_space;
             }
             else // left (default)
             {
@@ -2024,7 +2326,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
 
             if (strcmp(display_selected_text, "") != 0)
             {
-                GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding), screen->w - SCALE1(PADDING + BUTTON_MARGIN), SCALE1(PILL_SIZE)});
+                GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding), screen->w - SCALE1(PADDING + BUTTON_MARGIN) - image_col_space, SCALE1(PILL_SIZE)});
             }
 
             GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding), pill_width, SCALE1(PILL_SIZE)});
@@ -2047,13 +2349,13 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
         int shadow_x_pos;
         if (strcmp(alignment, "center") == 0)
         {
-            text_x_pos = (screen->w - text->w - color_box_space) / 2;
+            text_x_pos = (screen->w - text->w - color_box_space - image_col_space) / 2;
             shadow_x_pos = text_x_pos - 2;
         }
         else if (strcmp(alignment, "right") == 0)
         {
-            text_x_pos = screen->w - text->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
-            shadow_x_pos = screen->w - text->w - SCALE1(2 + PADDING + BUTTON_PADDING) - color_box_space;
+            text_x_pos = screen->w - text->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space - image_col_space;
+            shadow_x_pos = screen->w - text->w - SCALE1(2 + PADDING + BUTTON_PADDING) - color_box_space - image_col_space;
         }
         else // left (default)
         {
@@ -2138,7 +2440,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
         // draw the selected option text
         if (strcmp(display_selected_text, "") != 0)
         {
-            initial_cube_x_pos = screen->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
+            initial_cube_x_pos = screen->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space - image_col_space;
             if (j != 0 || strlen(state->title) > 0)
             {
                 SDL_Color selected_text_color = COLOR_WHITE;
@@ -2148,7 +2450,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
                 }
                 SDL_Surface *selected_text;
                 selected_text = TTF_RenderUTF8_Blended(state->fonts.large, display_selected_text, selected_text_color);
-                pos = (SDL_Rect){screen->w - selected_text->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space, pos.y, selected_text->w, selected_text->h};
+                pos = (SDL_Rect){screen->w - selected_text->w - SCALE1(PADDING + BUTTON_PADDING) - color_box_space - image_col_space, pos.y, selected_text->w, selected_text->h};
                 SDL_BlitSurface(selected_text, NULL, screen, &pos);
                 SDL_FreeSurface(selected_text);
             }
@@ -2175,6 +2477,40 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
                 SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 5) + 2, color_placeholder_height - 4,
                 color_placeholder_height - 4};
             SDL_FillRect(screen, &(SDL_Rect){color_rect.x, color_rect.y, color_rect.w, color_rect.h}, color);
+        }
+
+        // draw the per-item right-hand image, vertically centered in the row and
+        // anchored to the right edge (left of the hardware group on the top row)
+        if (state->list_state->items[i].image_surface != NULL)
+        {
+            SDL_Surface *image_surface = state->list_state->items[i].image_surface;
+            int image_right_edge = screen->w - SCALE1(PADDING);
+            if (in_top_row_no_title)
+            {
+                image_right_edge -= (ow + SCALE1(PADDING));
+            }
+            int row_top = SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding);
+            SDL_Rect image_pos = {
+                image_right_edge - image_surface->w,
+                row_top + (SCALE1(PILL_SIZE) - image_surface->h) / 2,
+                image_surface->w,
+                image_surface->h};
+            SDL_BlitSurface(image_surface, NULL, screen, &image_pos);
+        }
+    }
+
+    // free cached image surfaces for items scrolled out of view to bound memory
+    // to roughly the visible window; they reload on demand when scrolled back in
+    for (size_t i = 0; i < state->list_state->item_count; i++)
+    {
+        if ((int)i >= state->list_state->first_visible && (int)i < state->list_state->last_visible)
+            continue;
+        struct ListItem *offscreen = &state->list_state->items[i];
+        if (offscreen->image_surface != NULL)
+        {
+            SDL_FreeSurface(offscreen->image_surface);
+            offscreen->image_surface = NULL;
+            offscreen->image_active_path[0] = '\0';
         }
     }
 
@@ -2383,6 +2719,13 @@ void signal_handler(int signal)
 // - --write-value <value> (default: "selected")
 bool parse_arguments(struct AppState *state, int argc, char *argv[])
 {
+    // long-only options use val codes above the ASCII range so they need no
+    // short flag (the short option alphabet is nearly exhausted)
+    enum
+    {
+        OPT_SCREEN_RESOLUTION = 1000,
+        OPT_FALLBACK_IMAGE,
+    };
     static struct option long_options[] = {
         {"action-button", required_argument, 0, 'a'},
         {"action-text", required_argument, 0, 'A'},
@@ -2409,6 +2752,8 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"always-show-confirm", no_argument, 0, 'X'},
         {"disable-auto-sleep", no_argument, 0, 'U'},
         {"alphabetic-scroll", no_argument, 0, 'S'},
+        {"screen-resolution", required_argument, 0, OPT_SCREEN_RESOLUTION},
+        {"fallback-image", required_argument, 0, OPT_FALLBACK_IMAGE},
         {0, 0, 0, 0}};
 
     int opt;
@@ -2494,6 +2839,12 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'S':
             state->alphabetic_scroll = true;
             break;
+        case OPT_SCREEN_RESOLUTION:
+            strncpy(state->screen_resolution, optarg, sizeof(state->screen_resolution) - 1);
+            break;
+        case OPT_FALLBACK_IMAGE:
+            strncpy(state->fallback_image, optarg, sizeof(state->fallback_image) - 1);
+            break;
         default:
             return false;
         }
@@ -2511,6 +2862,19 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     {
         log_error("Invalid scroll method provided. Please provide a value of 'false', 'wrap', or 'pong'.");
         return false;
+    }
+
+    // validate screen resolution format (WIDTHxHEIGHT), when provided
+    if (state->screen_resolution[0] != '\0')
+    {
+        int resolution_width = 0;
+        int resolution_height = 0;
+        char resolution_extra = '\0';
+        if (sscanf(state->screen_resolution, "%dx%d%c", &resolution_width, &resolution_height, &resolution_extra) != 2 || resolution_width <= 0 || resolution_height <= 0)
+        {
+            log_error("Invalid screen resolution provided. Please provide a value of the form WIDTHxHEIGHT, e.g. '1280x720'.");
+            return false;
+        }
     }
 
     if (strcmp(state->format, "") == 0)
@@ -2985,6 +3349,10 @@ int main(int argc, char *argv[])
 
     // validate selection and compute initial visible window
     ListState_InitView(state.list_state, state.max_row_count);
+
+    // resolve per-item images now that init() has run and FIXED_WIDTH/HEIGHT
+    // reflect the real device resolution
+    ListState_ResolveImages(state.list_state, &state);
 
     if (state.list_state->item_count == 0 || state.list_state->selected < 0)
     {
