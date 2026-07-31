@@ -19,13 +19,20 @@
 #include "api.h"
 #include "utils.h"
 
+#include "list_filter.h"
 #include "list_hint.h"
 #include "list_image.h"
+#include "list_keyboard.h"
 #include "list_nav.h"
 #include "list_scroll.h"
 
 // the largest image column width is a third of the screen width, per issue #13
 #define IMAGE_MAX_WIDTH_DIVISOR 3
+
+// the accent color used to highlight the matched portion of a filtered item's
+// name; the greyscale MinUI palette has no accent, so this reads on both the
+// white selected-row pill and the dark unselected rows
+#define TRIAD_FILTER_HIGHLIGHT 0xf5, 0xc2, 0x42
 
 // Platform compatibility: tg5050 (NextUI) uses PWR_isOnline instead of PLAT_isOnline
 #ifdef PLATFORM_NEXTUI
@@ -97,6 +104,8 @@ struct ListItemFeature
     bool is_header;
     // whether or not the item is unselectable
     bool unselectable;
+    // whether the item stays visible even when it does not match an active filter
+    bool display_on_filter;
     // alignment of the item text ('left', 'center', 'right')
     char alignment[1024];
 
@@ -124,6 +133,8 @@ struct ListItemFeature
     bool has_is_header;
     // whether the item has a unselectable field
     bool has_unselectable;
+    // whether the item has a display_on_filter field
+    bool has_display_on_filter;
     // whether the item has a alignment field
     bool has_alignment;
 };
@@ -174,12 +185,22 @@ struct ListState
     struct ListItem *items;
     // number of items in the list
     size_t item_count;
+
+    // the filtered view: visible[k] is the source index of the k-th visible item.
+    // With no active filter this is the identity (visible[k] == k) and
+    // visible_count == item_count, so first_visible/last_visible/selected below
+    // behave exactly as they did before filtering existed. The indices below are
+    // positions into visible[], not raw source indices.
+    int *visible;
+    // number of currently visible items (length of the meaningful prefix of visible)
+    int visible_count;
+
     // rendering state
-    // index of first visible item
+    // display position of the first visible row
     int first_visible;
-    // index of last visible item
+    // display position one past the last visible row
     int last_visible;
-    // index of currently selected item
+    // display position of the currently selected item (-1 when nothing matches)
     int selected;
 
     // whether or not any items in the list have options
@@ -243,6 +264,24 @@ struct AppState
     bool disable_auto_sleep;
     // whether alphabetic scroll (L1/R1 letter jumping) is enabled
     bool alphabetic_scroll;
+    // whether the inline filter keyboard feature is allowed at all
+    bool allow_filter;
+    // the button that toggles the filter keyboard (e.g. "SELECT", "L1", "R1")
+    char filter_button[1024];
+    // whether the filter keyboard is shown at startup
+    bool display_filter_keyboard;
+    // the initial filter text (from --filter-input)
+    char filter_input[1024];
+    // a file path to also write the filter value to on exit (empty = none)
+    char filter_text_file[1024];
+    // whether the filter keyboard is currently shown
+    bool filter_keyboard_active;
+    // the current filter text being typed / applied
+    char filter_text[1024];
+    // the filter keyboard cursor (row/col/layout)
+    struct KeyboardCursor filter_cursor;
+    // the row count saved before the keyboard shrank the list (restored on close)
+    int saved_max_row_count;
     // how to autoscroll over-long selected item text ('false', 'wrap', 'pong')
     char scroll_method[1024];
     // timestamp (ms) when the current row's autoscroll animation started
@@ -284,12 +323,18 @@ bool has_left_button_group(struct AppState *app_state, struct ListState *list_st
     bool is_action_hidden = false;
     bool is_enable_hidden = false;
 
-    if (strcmp(app_state->action_button, "") == 0 || list_state->items[list_state->selected].features.hide_action)
+    // nothing is selected (e.g. an active filter matched no items)
+    if (list_state->selected < 0)
+    {
+        return false;
+    }
+
+    if (strcmp(app_state->action_button, "") == 0 || list_state->items[list_state->visible[list_state->selected]].features.hide_action)
     {
         is_action_hidden = true;
     }
 
-    if (strcmp(app_state->enable_button, "") == 0 || !list_state->items[list_state->selected].features.can_disable)
+    if (strcmp(app_state->enable_button, "") == 0 || !list_state->items[list_state->visible[list_state->selected]].features.can_disable)
     {
         is_enable_hidden = true;
     }
@@ -489,12 +534,28 @@ static void ListItem_ReadImages(struct ListItem *item, JSON_Object *features)
 }
 
 // ListState_New creates a new ListState from a JSON file
+// ListState_InitVisibleIdentity allocates the filtered-view index and sets it to
+// the identity mapping (every item visible, in source order) so an unfiltered
+// list behaves exactly as it did before filtering existed.
+static void ListState_InitVisibleIdentity(struct ListState *state)
+{
+    size_t n = state->item_count > 0 ? state->item_count : 1;
+    state->visible = malloc(sizeof(int) * n);
+    state->visible_count = (int)state->item_count;
+    for (size_t i = 0; i < state->item_count; i++)
+    {
+        state->visible[i] = (int)i;
+    }
+}
+
 struct ListState *ListState_New(const char *filename, const char *format, const char *item_key, const char *confirm_text, const char *default_background_image, const char *default_background_color, struct AppState *app_state)
 {
     struct ListState *state = malloc(sizeof(struct ListState));
     state->selected = -1;
     state->first_visible = 0;
     state->last_visible = 0;
+    state->visible = NULL;
+    state->visible_count = 0;
 
     if (strcmp(format, "text") == 0)
     {
@@ -590,6 +651,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     .show_confirm = false,
                     .is_header = false,
                     .unselectable = false,
+                    .display_on_filter = false,
                     .alignment = "",
                     .has_background_color = false,
                     .has_background_image = false,
@@ -603,6 +665,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     .has_show_confirm = false,
                     .has_is_header = false,
                     .has_unselectable = false,
+                    .has_display_on_filter = false,
                     .has_alignment = false,
                 };
                 strncpy(state->items[item_index].features.alignment, "left", sizeof(state->items[item_index].features.alignment) - 1);
@@ -631,6 +694,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         }
 
         free(contents);
+        ListState_InitVisibleIdentity(state);
         return state;
     }
 
@@ -791,6 +855,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .show_confirm = false,
                 .is_header = false,
                 .unselectable = false,
+                .display_on_filter = false,
                 .alignment = "",
                 .has_background_color = false,
                 .has_background_image = false,
@@ -804,6 +869,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .has_show_confirm = false,
                 .has_is_header = false,
                 .has_unselectable = false,
+                .has_display_on_filter = false,
                 .has_alignment = false,
             };
             strncpy(state->items[i].features.alignment, "left", sizeof(state->items[i].features.alignment) - 1);
@@ -903,6 +969,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .show_confirm = false,
                 .is_header = false,
                 .unselectable = false,
+                .display_on_filter = false,
                 .alignment = "",
                 .has_background_color = false,
                 .has_background_image = false,
@@ -916,6 +983,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                 .has_show_confirm = false,
                 .has_is_header = false,
                 .has_unselectable = false,
+                .has_display_on_filter = false,
                 .has_alignment = false,
             };
             strncpy(state->items[i].features.alignment, "left", sizeof(state->items[i].features.alignment) - 1);
@@ -1157,6 +1225,25 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
                     state->items[i].features.has_is_header = false;
                 }
 
+                // read in the display_on_filter from the json object
+                // if there is no display_on_filter, set it to false
+                // if there is a display_on_filter, treat it as a boolean
+                if (json_object_get_boolean(features, "display_on_filter") == 1)
+                {
+                    state->items[i].features.display_on_filter = true;
+                    state->items[i].features.has_display_on_filter = true;
+                }
+                else if (json_object_get_boolean(features, "display_on_filter") == 0)
+                {
+                    state->items[i].features.display_on_filter = false;
+                    state->items[i].features.has_display_on_filter = true;
+                }
+                else
+                {
+                    state->items[i].features.display_on_filter = false;
+                    state->items[i].features.has_display_on_filter = false;
+                }
+
                 // read in the alignment from the json object
                 // if there is no alignment, set it to 'left'
                 // if there is a alignment, it should be 'left', 'center', or 'right'
@@ -1242,28 +1329,33 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         }
     }
 
+    ListState_InitVisibleIdentity(state);
+
     json_value_free(root_value);
     return state;
 }
 
 // ListState_InitView validates selection and computes the initial visible window.
+// It operates on display positions (indices into visible[]); with no active
+// filter visible[] is the identity, so this behaves exactly as before.
 void ListState_InitView(struct ListState *state, int max_row_count)
 {
-    // validate selection: must point to a selectable item
+    // validate selection: must point to a selectable, currently-visible item
     int first_valid = -1;
     bool selection_is_valid = false;
-    for (size_t i = 0; i < state->item_count; i++)
+    for (int k = 0; k < state->visible_count; k++)
     {
-        bool valid_for_selection = !state->items[i].features.is_header &&
-            !state->items[i].features.unselectable;
+        struct ListItem *item = &state->items[state->visible[k]];
+        bool valid_for_selection = !item->features.is_header &&
+            !item->features.unselectable;
 
         if (valid_for_selection)
         {
             if (first_valid < 0)
             {
-                first_valid = (int)i;
+                first_valid = k;
             }
-            if ((int)i == state->selected)
+            if (k == state->selected)
             {
                 selection_is_valid = true;
             }
@@ -1275,29 +1367,76 @@ void ListState_InitView(struct ListState *state, int max_row_count)
         state->selected = (first_valid >= 0) ? first_valid : -1;
     }
 
-    // compute the visible window
-    size_t item_count = state->item_count;
-    if (item_count <= (size_t)max_row_count)
+    // compute the visible window over the display positions
+    int count = state->visible_count;
+    if (count <= max_row_count)
     {
         state->first_visible = 0;
-        state->last_visible = item_count;
+        state->last_visible = count;
     }
     else
     {
-        // try to center the selection
-        state->first_visible = state->selected - max_row_count / 2;
+        // try to center the selection (selected is >= 0 here since count > 0
+        // and, when nothing selectable matched, first_valid handling above left
+        // selected at -1 only when count is small enough for the branch above)
+        int anchor = state->selected >= 0 ? state->selected : 0;
+        state->first_visible = anchor - max_row_count / 2;
         if (state->first_visible < 0)
         {
             state->first_visible = 0;
         }
 
         state->last_visible = state->first_visible + max_row_count;
-        if ((size_t)state->last_visible > item_count)
+        if (state->last_visible > count)
         {
-            state->last_visible = (int)item_count;
+            state->last_visible = count;
             state->first_visible = state->last_visible - max_row_count;
         }
     }
+}
+
+// ListState_ApplyFilter rebuilds the filtered view for the given filter text,
+// preserving the current selection when it stays visible (otherwise moving to
+// the first selectable visible item, or -1 when nothing matches), and reframes
+// the visible window.
+void ListState_ApplyFilter(struct ListState *state, const char *filter, int max_row_count)
+{
+    // remember the currently-selected source item so we can keep it selected
+    int prev_source = -1;
+    if (state->selected >= 0 && state->selected < state->visible_count)
+    {
+        prev_source = state->visible[state->selected];
+    }
+
+    // rebuild the set of visible source indices
+    state->visible_count = 0;
+    for (size_t i = 0; i < state->item_count; i++)
+    {
+        struct ListItem *item = &state->items[i];
+        if (ListFilter_ItemVisible(item->features.is_header,
+                                   item->features.display_on_filter,
+                                   item->name, filter))
+        {
+            state->visible[state->visible_count++] = (int)i;
+        }
+    }
+
+    // map the previous selection to its new display position, if still visible
+    state->selected = -1;
+    if (prev_source >= 0)
+    {
+        for (int k = 0; k < state->visible_count; k++)
+        {
+            if (state->visible[k] == prev_source)
+            {
+                state->selected = k;
+                break;
+            }
+        }
+    }
+
+    // validate the selection and reframe the window
+    ListState_InitView(state, max_row_count);
 }
 
 // ListState_ResolveImages selects each item's right-hand image path for the
@@ -1340,23 +1479,26 @@ void ListState_ResolveImages(struct ListState *state, struct AppState *app_state
 // selection unchanged when there is nowhere to jump.
 static int alphabetic_jump_target(struct ListState *state, bool forward)
 {
-    if (state->item_count == 0)
+    // operate over the currently-visible items so letter jumps respect the
+    // active filter; the returned value is a display position into visible[]
+    if (state->visible_count == 0 || state->selected < 0)
         return state->selected;
 
-    struct ListNavItem *nav = malloc(state->item_count * sizeof(*nav));
+    struct ListNavItem *nav = malloc(state->visible_count * sizeof(*nav));
     if (nav == NULL)
         return state->selected;
 
-    for (size_t i = 0; i < state->item_count; i++)
+    for (int k = 0; k < state->visible_count; k++)
     {
-        nav[i].name = state->items[i].name;
-        nav[i].is_header = state->items[i].features.is_header;
-        nav[i].unselectable = state->items[i].features.unselectable;
+        struct ListItem *item = &state->items[state->visible[k]];
+        nav[k].name = item->name;
+        nav[k].is_header = item->features.is_header;
+        nav[k].unselectable = item->features.unselectable;
     }
 
     int target = forward
-                     ? ListNav_NextLetterIndex(nav, (int)state->item_count, state->selected)
-                     : ListNav_PrevLetterIndex(nav, (int)state->item_count, state->selected);
+                     ? ListNav_NextLetterIndex(nav, state->visible_count, state->selected)
+                     : ListNav_PrevLetterIndex(nav, state->visible_count, state->selected);
 
     free(nav);
     return target;
@@ -1366,17 +1508,231 @@ static int alphabetic_jump_target(struct ListState *state, bool forward)
 // is also polled here in handle_input, so it needs a forward declaration.
 void image_effective_path(struct ListItem *item, const char *fallback_image, char *out, size_t out_size);
 
+// filter_button_mask is defined with the other argument parsing below, but the
+// keyboard input handlers here need it, so it needs a forward declaration.
+static int filter_button_mask(const char *name);
+
+// the number of key rows in the filter keyboard (4 character rows + specials)
+#define FILTER_KB_DRAW_ROWS LIST_KEYBOARD_ROWS
+
+// FilterKeyboardGeom holds the on-screen geometry of the filter keyboard,
+// computed from the medium font so input handling (the list-row budget) and
+// drawing agree on where the keyboard sits.
+struct FilterKeyboardGeom
+{
+    int key_size;   // square key edge length
+    int col_spacing;
+    int row_spacing;
+    int input_h;    // input field height
+    int input_y;    // input field top
+    int grid_y;     // first key-row top
+    int block_top;  // top of the whole keyboard block
+    int list_rows;  // list rows that fit above the block
+};
+
+// filter_keyboard_font returns the font used to draw the keyboard. The small SDK
+// font keeps the keyboard compact so more of the filtered list stays visible.
+static TTF_Font *filter_keyboard_font(void)
+{
+    return (font.small != NULL) ? font.small : font.medium;
+}
+
+// filter_keyboard_geom computes the keyboard block geometry against the current
+// screen surface and keyboard font.
+static struct FilterKeyboardGeom filter_keyboard_geom(struct AppState *state)
+{
+    (void)state;
+    struct FilterKeyboardGeom g = {0};
+    int w = 0, h = 0;
+    TTF_Font *kb_font = filter_keyboard_font();
+    if (kb_font != NULL)
+    {
+        TTF_SizeUTF8(kb_font, "shift", &w, &h);
+    }
+    if (h <= 0)
+    {
+        h = SCALE1(FONT_SMALL);
+    }
+
+    g.key_size = h + SCALE1(4);
+    g.col_spacing = SCALE1(3);
+    g.row_spacing = SCALE1(3);
+    g.input_h = h + SCALE1(6);
+
+    int bottom_reserved = SCALE1(PADDING + PILL_SIZE); // the bottom button-hint bar
+    int grid_h = FILTER_KB_DRAW_ROWS * g.key_size + (FILTER_KB_DRAW_ROWS - 1) * g.row_spacing;
+    int block_h = g.input_h + SCALE1(3) + grid_h;
+
+    int screen_h = (screen != NULL) ? screen->h : (FIXED_HEIGHT);
+    g.block_top = screen_h - bottom_reserved - block_h - SCALE1(PADDING);
+    g.input_y = g.block_top;
+    g.grid_y = g.input_y + g.input_h + SCALE1(3);
+
+    int list_top = SCALE1(PADDING);
+    int avail = g.block_top - SCALE1(PADDING) - list_top;
+    g.list_rows = (avail > 0) ? avail / SCALE1(PILL_SIZE) : 0;
+    if (g.list_rows < 1)
+    {
+        g.list_rows = 1;
+    }
+    return g;
+}
+
+// filter_text_append appends s to the current filter text, guarding the buffer.
+static void filter_text_append(struct AppState *state, const char *s)
+{
+    size_t len = strlen(state->filter_text);
+    size_t add = strlen(s);
+    if (len + add < sizeof(state->filter_text))
+    {
+        memcpy(state->filter_text + len, s, add + 1);
+    }
+}
+
+// apply_filter_text rebuilds the filtered view from the current filter text.
+static void apply_filter_text(struct AppState *state)
+{
+    ListState_ApplyFilter(state->list_state, state->filter_text, state->max_row_count);
+}
+
+// open_filter_keyboard shows the keyboard, shrinking the list row budget to the
+// space above it (saving the full budget so it can be restored on close).
+static void open_filter_keyboard(struct AppState *state)
+{
+    struct FilterKeyboardGeom g = filter_keyboard_geom(state);
+    int rows = g.list_rows;
+    if (strlen(state->title) > 0 && rows > 1)
+    {
+        rows -= 1;
+    }
+    if (rows > state->max_row_count)
+    {
+        rows = state->max_row_count;
+    }
+    if (rows < 1)
+    {
+        rows = 1;
+    }
+
+    state->saved_max_row_count = state->max_row_count;
+    state->max_row_count = rows;
+    state->filter_keyboard_active = true;
+    ListKeyboard_Rescue(&state->filter_cursor);
+    ListState_InitView(state->list_state, state->max_row_count);
+    state->redraw = 1;
+}
+
+// close_filter_keyboard hides the keyboard and restores the full row budget.
+static void close_filter_keyboard(struct AppState *state)
+{
+    state->filter_keyboard_active = false;
+    state->max_row_count = state->saved_max_row_count;
+    ListState_InitView(state->list_state, state->max_row_count);
+    state->redraw = 1;
+}
+
+// handle_filter_keyboard_input drives the on-screen keyboard: the d-pad moves the
+// cursor, A activates the focused key (shift cycles layout, space types a space,
+// enter closes), B backspaces, X clears, the toggle button closes, and MENU quits.
+static void handle_filter_keyboard_input(struct AppState *state)
+{
+    state->redraw = 1;
+
+    if (PAD_justReleased(BTN_MENU))
+    {
+        state->redraw = 0;
+        state->quitting = 1;
+        state->exit_code = ExitCodeMenuButton;
+        return;
+    }
+
+    if (PAD_justReleased(filter_button_mask(state->filter_button)))
+    {
+        close_filter_keyboard(state);
+        return;
+    }
+
+    if (PAD_justRepeated(BTN_UP))
+    {
+        ListKeyboard_Move(&state->filter_cursor, LIST_KEYBOARD_UP);
+    }
+    else if (PAD_justRepeated(BTN_DOWN))
+    {
+        ListKeyboard_Move(&state->filter_cursor, LIST_KEYBOARD_DOWN);
+    }
+    else if (PAD_justRepeated(BTN_LEFT))
+    {
+        ListKeyboard_Move(&state->filter_cursor, LIST_KEYBOARD_LEFT);
+    }
+    else if (PAD_justRepeated(BTN_RIGHT))
+    {
+        ListKeyboard_Move(&state->filter_cursor, LIST_KEYBOARD_RIGHT);
+    }
+    else if (PAD_justReleased(BTN_A))
+    {
+        const char *key = ListKeyboard_KeyAt(state->filter_cursor.layout,
+                                             state->filter_cursor.row,
+                                             state->filter_cursor.col);
+        if (key[0] != '\0')
+        {
+            if (strcmp(key, "shift") == 0)
+            {
+                ListKeyboard_CycleLayout(&state->filter_cursor);
+            }
+            else if (strcmp(key, "space") == 0)
+            {
+                filter_text_append(state, " ");
+                apply_filter_text(state);
+            }
+            else if (strcmp(key, "enter") == 0)
+            {
+                close_filter_keyboard(state);
+            }
+            else
+            {
+                filter_text_append(state, key);
+                apply_filter_text(state);
+            }
+        }
+    }
+    else if (PAD_justReleased(BTN_B))
+    {
+        size_t len = strlen(state->filter_text);
+        if (len > 0)
+        {
+            // drop the last UTF-8 code point (special characters are multi-byte)
+            size_t i = len - 1;
+            while (i > 0 && ((unsigned char)state->filter_text[i] & 0xC0) == 0x80)
+            {
+                i--;
+            }
+            state->filter_text[i] = '\0';
+            apply_filter_text(state);
+        }
+    }
+    else if (PAD_justReleased(BTN_X))
+    {
+        state->filter_text[0] = '\0';
+        apply_filter_text(state);
+    }
+    else
+    {
+        state->redraw = 0;
+    }
+}
+
 // handle_input interprets input events and mutates app state
 void handle_input(struct AppState *state)
 {
     // do not redraw by default
     state->redraw = 0;
 
-    if (!state->list_state->items[state->list_state->selected].features.background_image_exists && state->list_state->items[state->list_state->selected].features.background_image[0] != '\0')
+    if (state->list_state->selected >= 0 &&
+        !state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_image_exists && state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_image[0] != '\0')
     {
-        if (access(state->list_state->items[state->list_state->selected].features.background_image, F_OK) != -1)
+        if (access(state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_image, F_OK) != -1)
         {
-            state->list_state->items[state->list_state->selected].features.background_image_exists = true;
+            state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_image_exists = true;
             state->redraw = 1;
         }
     }
@@ -1384,9 +1740,9 @@ void handle_input(struct AppState *state)
     // poll visible items' right-hand images so a missing file that later appears
     // (or a fallback that swaps in or out) forces a redraw; draw_screen then
     // reloads the cached surface from the new effective path
-    for (int i = state->list_state->first_visible; i < state->list_state->last_visible; i++)
+    for (int k = state->list_state->first_visible; k < state->list_state->last_visible; k++)
     {
-        struct ListItem *item = &state->list_state->items[i];
+        struct ListItem *item = &state->list_state->items[state->list_state->visible[k]];
         if (!item->has_image)
             continue;
 
@@ -1401,6 +1757,35 @@ void handle_input(struct AppState *state)
     PAD_poll();
 
     int max_row_count = state->max_row_count;
+
+    // filter keyboard: when active, route all input to it; otherwise the
+    // configured toggle button opens it. Only active when filtering is allowed.
+    if (state->allow_filter)
+    {
+        if (state->filter_keyboard_active)
+        {
+            handle_filter_keyboard_input(state);
+            return;
+        }
+        if (PAD_justReleased(filter_button_mask(state->filter_button)))
+        {
+            open_filter_keyboard(state);
+            return;
+        }
+    }
+
+    // with an active filter that matched nothing there is no selected item, so
+    // only MENU/quit remains meaningful (the keyboard toggle was handled above)
+    if (state->list_state->selected < 0)
+    {
+        if (PAD_justReleased(BTN_MENU))
+        {
+            state->redraw = 0;
+            state->quitting = 1;
+            state->exit_code = ExitCodeMenuButton;
+        }
+        return;
+    }
 
     bool is_action_button_pressed = false;
     bool is_cancel_button_pressed = false;
@@ -1483,7 +1868,7 @@ void handle_input(struct AppState *state)
         }
     }
 
-    if (is_action_button_pressed && !state->list_state->items[state->list_state->selected].features.hide_action)
+    if (is_action_button_pressed && !state->list_state->items[state->list_state->visible[state->list_state->selected]].features.hide_action)
     {
         state->redraw = 0;
         state->quitting = 1;
@@ -1491,7 +1876,7 @@ void handle_input(struct AppState *state)
         return;
     }
 
-    if (is_cancel_button_pressed && !state->list_state->items[state->list_state->selected].features.hide_cancel)
+    if (is_cancel_button_pressed && !state->list_state->items[state->list_state->visible[state->list_state->selected]].features.hide_cancel)
     {
         state->redraw = 0;
         state->quitting = 1;
@@ -1500,12 +1885,12 @@ void handle_input(struct AppState *state)
     }
 
     bool force_hide_confirm = false;
-    if (!state->always_show_confirm && !state->list_state->items[state->list_state->selected].features.show_confirm && state->list_state->items[state->list_state->selected].has_options && state->list_state->items[state->list_state->selected].initial_selected == state->list_state->items[state->list_state->selected].selected)
+    if (!state->always_show_confirm && !state->list_state->items[state->list_state->visible[state->list_state->selected]].features.show_confirm && state->list_state->items[state->list_state->visible[state->list_state->selected]].has_options && state->list_state->items[state->list_state->visible[state->list_state->selected]].initial_selected == state->list_state->items[state->list_state->visible[state->list_state->selected]].selected)
     {
         force_hide_confirm = true;
     }
 
-    if (!state->always_show_confirm && state->list_state->items[state->list_state->selected].features.hide_confirm)
+    if (!state->always_show_confirm && state->list_state->items[state->list_state->visible[state->list_state->selected]].features.hide_confirm)
     {
         force_hide_confirm = true;
     }
@@ -1521,10 +1906,10 @@ void handle_input(struct AppState *state)
     // if the enable button is pressed, toggle the enabled state of the currently selected item
     if (is_enable_button_pressed)
     {
-        if (state->list_state->items[state->list_state->selected].features.can_disable)
+        if (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.can_disable)
         {
             state->redraw = 1;
-            state->list_state->items[state->list_state->selected].features.disabled = !state->list_state->items[state->list_state->selected].features.disabled;
+            state->list_state->items[state->list_state->visible[state->list_state->selected]].features.disabled = !state->list_state->items[state->list_state->visible[state->list_state->selected]].features.disabled;
         }
         return;
     }
@@ -1546,7 +1931,7 @@ void handle_input(struct AppState *state)
         else
         {
             state->list_state->selected -= 1;
-            while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
+            while (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.is_header || state->list_state->items[state->list_state->visible[state->list_state->selected]].features.unselectable)
             {
                 state->list_state->selected -= 1;
                 if (state->list_state->selected < 0)
@@ -1557,15 +1942,15 @@ void handle_input(struct AppState *state)
 
             if (state->list_state->selected < 0)
             {
-                state->list_state->selected = state->list_state->item_count - 1;
-                while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
+                state->list_state->selected = state->list_state->visible_count - 1;
+                while (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.is_header || state->list_state->items[state->list_state->visible[state->list_state->selected]].features.unselectable)
                 {
                     state->list_state->selected -= 1;
                 }
 
-                int start = state->list_state->item_count - max_row_count;
+                int start = state->list_state->visible_count - max_row_count;
                 state->list_state->first_visible = (start < 0) ? 0 : start;
-                state->list_state->last_visible = state->list_state->item_count;
+                state->list_state->last_visible = state->list_state->visible_count;
             }
             else if (state->list_state->selected < state->list_state->first_visible)
             {
@@ -1577,32 +1962,32 @@ void handle_input(struct AppState *state)
     }
     else if (PAD_justRepeated(BTN_DOWN))
     {
-        if (state->list_state->selected == state->list_state->item_count - 1 && !PAD_justPressed(BTN_DOWN))
+        if (state->list_state->selected == state->list_state->visible_count - 1 && !PAD_justPressed(BTN_DOWN))
         {
             state->redraw = 0;
         }
         else
         {
             state->list_state->selected += 1;
-            while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
+            while (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.is_header || state->list_state->items[state->list_state->visible[state->list_state->selected]].features.unselectable)
             {
                 state->list_state->selected += 1;
-                if (state->list_state->selected >= state->list_state->item_count)
+                if (state->list_state->selected >= state->list_state->visible_count)
                 {
                     break;
                 }
             }
 
-            if (state->list_state->selected >= state->list_state->item_count)
+            if (state->list_state->selected >= state->list_state->visible_count)
             {
                 state->list_state->selected = 0;
-                while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
+                while (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.is_header || state->list_state->items[state->list_state->visible[state->list_state->selected]].features.unselectable)
                 {
                     state->list_state->selected += 1;
                 }
 
                 state->list_state->first_visible = 0;
-                state->list_state->last_visible = (state->list_state->item_count < max_row_count) ? state->list_state->item_count : max_row_count;
+                state->list_state->last_visible = (state->list_state->visible_count < max_row_count) ? state->list_state->visible_count : max_row_count;
             }
             else if (state->list_state->selected >= state->list_state->last_visible)
             {
@@ -1617,12 +2002,12 @@ void handle_input(struct AppState *state)
         // if the state has options, cycle through the options
         if (state->list_state->has_options)
         {
-            if (!state->list_state->items[state->list_state->selected].features.disabled)
+            if (!state->list_state->items[state->list_state->visible[state->list_state->selected]].features.disabled)
             {
-                state->list_state->items[state->list_state->selected].selected -= 1;
-                if (state->list_state->items[state->list_state->selected].selected < 0)
+                state->list_state->items[state->list_state->visible[state->list_state->selected]].selected -= 1;
+                if (state->list_state->items[state->list_state->visible[state->list_state->selected]].selected < 0)
                 {
-                    state->list_state->items[state->list_state->selected].selected = state->list_state->items[state->list_state->selected].option_count - 1;
+                    state->list_state->items[state->list_state->visible[state->list_state->selected]].selected = state->list_state->items[state->list_state->visible[state->list_state->selected]].option_count - 1;
                 }
             }
         }
@@ -1634,7 +2019,7 @@ void handle_input(struct AppState *state)
                 state->list_state->selected = 0;
             }
 
-            while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
+            while (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.is_header || state->list_state->items[state->list_state->visible[state->list_state->selected]].features.unselectable)
             {
                 state->list_state->selected -= 1;
                 if (state->list_state->selected < 0)
@@ -1646,12 +2031,12 @@ void handle_input(struct AppState *state)
 
             if (state->list_state->selected == 0)
             {
-                while (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable)
+                while (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.is_header || state->list_state->items[state->list_state->visible[state->list_state->selected]].features.unselectable)
                 {
                     state->list_state->selected += 1;
-                    if (state->list_state->selected >= state->list_state->item_count)
+                    if (state->list_state->selected >= state->list_state->visible_count)
                     {
-                        state->list_state->selected = state->list_state->item_count - 1;
+                        state->list_state->selected = state->list_state->visible_count - 1;
                         break;
                     }
                 }
@@ -1661,7 +2046,7 @@ void handle_input(struct AppState *state)
             {
                 state->list_state->selected = 0;
                 state->list_state->first_visible = 0;
-                state->list_state->last_visible = (state->list_state->item_count < max_row_count) ? state->list_state->item_count : max_row_count;
+                state->list_state->last_visible = (state->list_state->visible_count < max_row_count) ? state->list_state->visible_count : max_row_count;
             }
             else if (state->list_state->selected < state->list_state->first_visible)
             {
@@ -1680,41 +2065,41 @@ void handle_input(struct AppState *state)
         // if the state has options, cycle through the options
         if (state->list_state->has_options)
         {
-            if (!state->list_state->items[state->list_state->selected].features.disabled)
+            if (!state->list_state->items[state->list_state->visible[state->list_state->selected]].features.disabled)
             {
-                state->list_state->items[state->list_state->selected].selected += 1;
-                if (state->list_state->items[state->list_state->selected].selected >= state->list_state->items[state->list_state->selected].option_count)
+                state->list_state->items[state->list_state->visible[state->list_state->selected]].selected += 1;
+                if (state->list_state->items[state->list_state->visible[state->list_state->selected]].selected >= state->list_state->items[state->list_state->visible[state->list_state->selected]].option_count)
                 {
-                    state->list_state->items[state->list_state->selected].selected = 0;
+                    state->list_state->items[state->list_state->visible[state->list_state->selected]].selected = 0;
                 }
             }
         }
         else
         {
             state->list_state->selected += max_row_count;
-            if (state->list_state->selected >= state->list_state->item_count)
+            if (state->list_state->selected >= state->list_state->visible_count)
             {
-                state->list_state->selected = state->list_state->item_count - 1;
+                state->list_state->selected = state->list_state->visible_count - 1;
             }
-            while (state->list_state->selected < (int)state->list_state->item_count &&
-                   (state->list_state->items[state->list_state->selected].features.is_header || state->list_state->items[state->list_state->selected].features.unselectable))
+            while (state->list_state->selected < (int)state->list_state->visible_count &&
+                   (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.is_header || state->list_state->items[state->list_state->visible[state->list_state->selected]].features.unselectable))
             {
                 state->list_state->selected += 1;
             }
 
-            if (state->list_state->selected >= (int)state->list_state->item_count)
+            if (state->list_state->selected >= (int)state->list_state->visible_count)
             {
-                state->list_state->selected = state->list_state->item_count - 1;
-                int start = state->list_state->item_count - max_row_count;
+                state->list_state->selected = state->list_state->visible_count - 1;
+                int start = state->list_state->visible_count - max_row_count;
                 state->list_state->first_visible = (start < 0) ? 0 : start;
-                state->list_state->last_visible = state->list_state->item_count;
+                state->list_state->last_visible = state->list_state->visible_count;
             }
             else if (state->list_state->selected >= state->list_state->last_visible)
             {
                 state->list_state->last_visible += max_row_count;
-                if (state->list_state->last_visible > state->list_state->item_count)
+                if (state->list_state->last_visible > state->list_state->visible_count)
                 {
-                    state->list_state->last_visible = state->list_state->item_count;
+                    state->list_state->last_visible = state->list_state->visible_count;
                 }
                 state->list_state->first_visible = state->list_state->last_visible - max_row_count;
             }
@@ -1933,11 +2318,18 @@ void ensure_item_image(struct ListItem *item, const char *effective, int max_w, 
 // draw_background draws the background of the list
 bool draw_background(SDL_Surface *screen, struct AppState *state)
 {
+    // nothing selected (e.g. an active filter matched no items): plain background
+    if (state->list_state->selected < 0)
+    {
+        SDL_FillRect(screen, NULL, SDL_MapRGBA(screen->format, 0, 0, 0, 255));
+        return false;
+    }
+
     // render a background color
     char hex_color[1024] = "#000000";
-    if (state->list_state->items[state->list_state->selected].features.background_color[0] != '\0')
+    if (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_color[0] != '\0')
     {
-        strncpy(hex_color, state->list_state->items[state->list_state->selected].features.background_color, sizeof(hex_color));
+        strncpy(hex_color, state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_color, sizeof(hex_color));
     }
 
     SDL_Color background_color = hex_to_sdl_color(hex_color);
@@ -1945,7 +2337,7 @@ bool draw_background(SDL_Surface *screen, struct AppState *state)
     SDL_FillRect(screen, NULL, color);
 
     bool should_draw_background_image = false;
-    if (state->list_state->items[state->list_state->selected].features.background_image_exists && access(state->list_state->items[state->list_state->selected].features.background_image, F_OK) != -1)
+    if (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_image_exists && access(state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_image, F_OK) != -1)
     {
         should_draw_background_image = true;
     }
@@ -1953,7 +2345,7 @@ bool draw_background(SDL_Surface *screen, struct AppState *state)
     // check if there is an image and it is accessible
     if (should_draw_background_image)
     {
-        SDL_Surface *surface = IMG_Load(state->list_state->items[state->list_state->selected].features.background_image);
+        SDL_Surface *surface = IMG_Load(state->list_state->items[state->list_state->visible[state->list_state->selected]].features.background_image);
         if (surface)
         {
             int imgW = surface->w, imgH = surface->h;
@@ -2006,36 +2398,192 @@ bool draw_background(SDL_Surface *screen, struct AppState *state)
     return should_draw_background_image;
 }
 
+// draw_match_highlight paints an accent rectangle behind the matched portion of
+// text_str and re-renders that substring in black over it, so the filter match
+// stands out on both selected and unselected rows. It is a no-op when there is
+// no active filter or the (already-truncated) text does not contain the match.
+static void draw_match_highlight(SDL_Surface *screen, TTF_Font *font,
+                                 const char *text_str, const char *filter,
+                                 int base_x, int base_y)
+{
+    if (font == NULL || filter == NULL || filter[0] == '\0' || text_str == NULL)
+        return;
+
+    size_t ms = 0, ml = 0;
+    if (!ListFilter_Match(text_str, filter, &ms, &ml) || ml == 0)
+        return;
+
+    char prefix[256];
+    char match[256];
+    if (ms >= sizeof(prefix) || ml >= sizeof(match))
+        return;
+    memcpy(prefix, text_str, ms);
+    prefix[ms] = '\0';
+    memcpy(match, text_str + ms, ml);
+    match[ml] = '\0';
+
+    int prefix_w = 0, match_w = 0, match_h = 0;
+    TTF_SizeUTF8(font, prefix, &prefix_w, NULL);
+    TTF_SizeUTF8(font, match, &match_w, &match_h);
+    if (match_w <= 0 || match_h <= 0)
+        return;
+
+    SDL_Rect hl = {base_x + prefix_w, base_y, match_w, match_h};
+    SDL_FillRect(screen, &hl, SDL_MapRGB(screen->format, TRIAD_FILTER_HIGHLIGHT));
+
+    SDL_Surface *m = TTF_RenderUTF8_Blended(font, match, COLOR_BLACK);
+    if (m != NULL)
+    {
+        SDL_Rect mp = {base_x + prefix_w, base_y, m->w, m->h};
+        SDL_BlitSurface(m, NULL, screen, &mp);
+        SDL_FreeSurface(m);
+    }
+}
+
+// draw_filter_keyboard renders the on-screen filter keyboard: an input field
+// showing the current filter text, then the key grid for the active layout with
+// the focused key inverted. Ported from the sibling minui-keyboard tool.
+static void draw_filter_keyboard(SDL_Surface *screen, struct AppState *state)
+{
+    struct FilterKeyboardGeom g = filter_keyboard_geom(state);
+    TTF_Font *kb_font = filter_keyboard_font();
+
+    // input field background
+    SDL_Rect input_bg = {SCALE1(PADDING), g.input_y, screen->w - SCALE1(PADDING) * 2, g.input_h};
+    SDL_FillRect(screen, &input_bg, SDL_MapRGB(screen->format, TRIAD_DARK_GRAY));
+
+    // current filter text, clipped to the field and tail-aligned so the most
+    // recently typed characters stay visible
+    if (state->filter_text[0] != '\0' && kb_font != NULL)
+    {
+        SDL_Surface *input = TTF_RenderUTF8_Blended(kb_font, state->filter_text, COLOR_WHITE);
+        if (input != NULL)
+        {
+            int inner_x = SCALE1(PADDING + BUTTON_PADDING);
+            int inner_w = input_bg.w - SCALE1(BUTTON_PADDING * 2);
+            int ip_x = inner_x;
+            if (input->w > inner_w)
+            {
+                ip_x = input_bg.x + input_bg.w - SCALE1(BUTTON_PADDING) - input->w;
+            }
+            SDL_Rect ip = {ip_x, g.input_y + (g.input_h - input->h) / 2, input->w, input->h};
+            SDL_SetClipRect(screen, &input_bg);
+            SDL_BlitSurface(input, NULL, screen, &ip);
+            SDL_SetClipRect(screen, NULL);
+            SDL_FreeSurface(input);
+        }
+    }
+
+    // the special keys are wider than the character keys
+    int shift_w = 0, space_w = 0, enter_w = 0;
+    if (kb_font != NULL)
+    {
+        TTF_SizeUTF8(kb_font, "shift", &shift_w, NULL);
+        TTF_SizeUTF8(kb_font, "space", &space_w, NULL);
+        TTF_SizeUTF8(kb_font, "enter", &enter_w, NULL);
+    }
+    int special_key_width = shift_w;
+    if (space_w > special_key_width)
+        special_key_width = space_w;
+    if (enter_w > special_key_width)
+        special_key_width = enter_w;
+    special_key_width += g.col_spacing * 4;
+
+    for (int row = 0; row < LIST_KEYBOARD_ROWS; row++)
+    {
+        int len = ListKeyboard_RowLength(state->filter_cursor.layout, row);
+        int total_width;
+        if (row == LIST_KEYBOARD_ROWS - 1)
+        {
+            total_width = (special_key_width * 3) + (2 * g.col_spacing);
+        }
+        else
+        {
+            total_width = (len * g.key_size) + ((len - 1) * g.col_spacing);
+        }
+        int start_x = (screen->w - total_width) / 2;
+
+        for (int col = 0; col < len; col++)
+        {
+            const char *key = ListKeyboard_KeyAt(state->filter_cursor.layout, row, col);
+            if (key[0] == '\0')
+                continue;
+
+            bool focused = (row == state->filter_cursor.row && col == state->filter_cursor.col);
+            int cur_w = g.key_size;
+            if (strcmp(key, "shift") == 0 || strcmp(key, "space") == 0 || strcmp(key, "enter") == 0)
+            {
+                cur_w = special_key_width;
+            }
+
+            SDL_Rect key_pos = {
+                start_x + col * (cur_w + g.col_spacing),
+                g.grid_y + row * (g.key_size + g.row_spacing),
+                cur_w,
+                g.key_size};
+
+            Uint32 bg = focused ? SDL_MapRGB(screen->format, TRIAD_WHITE)
+                                : SDL_MapRGB(screen->format, TRIAD_DARK_GRAY);
+            SDL_FillRect(screen, &key_pos, bg);
+
+            if (kb_font != NULL)
+            {
+                SDL_Color tc = focused ? COLOR_BLACK : COLOR_WHITE;
+                SDL_Surface *kt = TTF_RenderUTF8_Blended(kb_font, key, tc);
+                if (kt != NULL)
+                {
+                    SDL_Rect tp = {
+                        key_pos.x + (cur_w - kt->w) / 2,
+                        key_pos.y + (g.key_size - kt->h) / 2,
+                        kt->w,
+                        kt->h};
+                    SDL_BlitSurface(kt, NULL, screen, &tp);
+                    SDL_FreeSurface(kt);
+                }
+            }
+        }
+    }
+}
+
 // draw_screen interprets the app state and draws it to the screen
 void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool should_draw_background_image)
 {
-    bool force_hide_confirm = false;
-    if (!state->always_show_confirm && !state->list_state->items[state->list_state->selected].features.show_confirm && state->list_state->items[state->list_state->selected].has_options && state->list_state->items[state->list_state->selected].initial_selected == state->list_state->items[state->list_state->selected].selected)
+    // draw the button group on the right. when the filter keyboard is open the
+    // hints describe the keyboard controls; when nothing is selected (an active
+    // filter matched nothing) there is no confirm/cancel to show
+    if (state->filter_keyboard_active)
     {
-        force_hide_confirm = true;
+        GFX_blitButtonGroup((char *[]){"A", "TYPE", "X", "CLEAR", NULL}, 1, screen, 1);
     }
-
-    if (!state->always_show_confirm && state->list_state->items[state->list_state->selected].features.hide_confirm)
+    else if (state->list_state->selected >= 0)
     {
-        force_hide_confirm = true;
-    }
-
-    // draw the button group on the right
-    // only two buttons can be displayed at a time
-    if (force_hide_confirm)
-    {
-        if (!state->list_state->items[state->list_state->selected].features.hide_cancel)
+        bool force_hide_confirm = false;
+        if (!state->always_show_confirm && !state->list_state->items[state->list_state->visible[state->list_state->selected]].features.show_confirm && state->list_state->items[state->list_state->visible[state->list_state->selected]].has_options && state->list_state->items[state->list_state->visible[state->list_state->selected]].initial_selected == state->list_state->items[state->list_state->visible[state->list_state->selected]].selected)
         {
-            GFX_blitButtonGroup((char *[]){state->cancel_button, state->cancel_text, NULL}, 1, screen, 1);
+            force_hide_confirm = true;
         }
-    }
-    else if (state->list_state->items[state->list_state->selected].features.hide_cancel)
-    {
-        GFX_blitButtonGroup((char *[]){state->confirm_button, state->list_state->items[state->list_state->selected].features.confirm_text, NULL}, 1, screen, 1);
-    }
-    else
-    {
-        GFX_blitButtonGroup((char *[]){state->cancel_button, state->cancel_text, state->confirm_button, state->list_state->items[state->list_state->selected].features.confirm_text, NULL}, 1, screen, 1);
+
+        if (!state->always_show_confirm && state->list_state->items[state->list_state->visible[state->list_state->selected]].features.hide_confirm)
+        {
+            force_hide_confirm = true;
+        }
+
+        // only two buttons can be displayed at a time
+        if (force_hide_confirm)
+        {
+            if (!state->list_state->items[state->list_state->visible[state->list_state->selected]].features.hide_cancel)
+            {
+                GFX_blitButtonGroup((char *[]){state->cancel_button, state->cancel_text, NULL}, 1, screen, 1);
+            }
+        }
+        else if (state->list_state->items[state->list_state->visible[state->list_state->selected]].features.hide_cancel)
+        {
+            GFX_blitButtonGroup((char *[]){state->confirm_button, state->list_state->items[state->list_state->visible[state->list_state->selected]].features.confirm_text, NULL}, 1, screen, 1);
+        }
+        else
+        {
+            GFX_blitButtonGroup((char *[]){state->cancel_button, state->cancel_text, state->confirm_button, state->list_state->items[state->list_state->visible[state->list_state->selected]].features.confirm_text, NULL}, 1, screen, 1);
+        }
     }
 
     // if there is a title specified, compute the space needed for it
@@ -2126,8 +2674,10 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
     };
     state->scroll_active = false;
 
-    for (int i = state->list_state->first_visible, j = 0; i < state->list_state->last_visible; i++, j++)
+    for (int k = state->list_state->first_visible, j = 0; k < state->list_state->last_visible; k++, j++)
     {
+        // k is the display position; i is the source index it maps to
+        int i = state->list_state->visible[k];
         int available_width = (screen->w) - SCALE1(PADDING * 2);
         bool in_top_row_no_title = (j == 0 && strlen(state->title) == 0);
         // Account for the space taken up by ow and it's padding
@@ -2386,7 +2936,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             text_x_pos = SCALE1(PADDING + BUTTON_PADDING);
         }
 
-        int text_y_pos = SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 4);
+        int text_y_pos = SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding + 4);
         SDL_Rect pos = {
             text_x_pos,
             text_y_pos,
@@ -2398,7 +2948,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             // clip the marquee to the pill interior and blit the full text at the
             // animated offset; wrap draws a second copy after a gap so the loop
             // is seamless
-            int clip_y_pos = SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding);
+            int clip_y_pos = SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding);
             SDL_Rect scroll_clip = {text_x_pos, clip_y_pos, scroll_viewport, SCALE1(PILL_SIZE)};
             SDL_SetClipRect(screen, &scroll_clip);
 
@@ -2423,7 +2973,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
                 accent_text = TTF_RenderUTF8_Blended(state->fonts.large, truncated_display_text, COLOR_BLACK);
                 SDL_Rect accent_pos = {
                     shadow_x_pos,
-                    SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 4 + 2),
+                    SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding + 4 + 2),
                     accent_text->w,
                     accent_text->h};
                 SDL_BlitSurface(accent_text, NULL, screen, &accent_pos);
@@ -2431,6 +2981,14 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             }
 
             SDL_BlitSurface(text, NULL, screen, &pos);
+
+            // highlight the matched portion of the name while filtering (the
+            // marquee path above renders the full string and is left unhighlighted)
+            if (state->allow_filter && state->filter_text[0] != '\0' && !is_hex_color)
+            {
+                draw_match_highlight(screen, state->fonts.large, truncated_display_text,
+                                     state->filter_text, text_x_pos, text_y_pos);
+            }
         }
 
         SDL_FreeSurface(text);
@@ -2467,14 +3025,14 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             uint32_t outline_color = sdl_color_to_uint32(text_color);
             SDL_Rect outline_rect = {
                 initial_cube_x_pos + SCALE1(PADDING),
-                SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 5), color_placeholder_height,
+                SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding + 5), color_placeholder_height,
                 color_placeholder_height};
             SDL_FillRect(screen, &(SDL_Rect){outline_rect.x, outline_rect.y, outline_rect.w, outline_rect.h}, outline_color);
 
             // Draw color cube
             SDL_Rect color_rect = {
                 initial_cube_x_pos + SCALE1(PADDING) + 2,
-                SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 5) + 2, color_placeholder_height - 4,
+                SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding + 5) + 2, color_placeholder_height - 4,
                 color_placeholder_height - 4};
             SDL_FillRect(screen, &(SDL_Rect){color_rect.x, color_rect.y, color_rect.w, color_rect.h}, color);
         }
@@ -2489,7 +3047,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             {
                 image_right_edge -= (ow + SCALE1(PADDING));
             }
-            int row_top = SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding);
+            int row_top = SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding);
             SDL_Rect image_pos = {
                 image_right_edge - image_surface->w,
                 row_top + (SCALE1(PILL_SIZE) - image_surface->h) / 2,
@@ -2503,7 +3061,18 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
     // to roughly the visible window; they reload on demand when scrolled back in
     for (size_t i = 0; i < state->list_state->item_count; i++)
     {
-        if ((int)i >= state->list_state->first_visible && (int)i < state->list_state->last_visible)
+        // an item is on screen when its source index appears in the currently
+        // displayed window of visible[]; skip freeing those
+        bool onscreen = false;
+        for (int k = state->list_state->first_visible; k < state->list_state->last_visible; k++)
+        {
+            if (state->list_state->visible[k] == (int)i)
+            {
+                onscreen = true;
+                break;
+            }
+        }
+        if (onscreen)
             continue;
         struct ListItem *offscreen = &state->list_state->items[i];
         if (offscreen->image_surface != NULL)
@@ -2521,22 +3090,37 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
     }
 
     // draw the button group on the left
-    // this should only display the enable button if the current item supports enabling
-    // and should only display the action button if it is assigned to a button
-    if (current_item_supports_enabling && strcmp(state->enable_button, "") != 0)
+    // when the filter keyboard is open its controls occupy the bottom-left; when
+    // nothing is selected there is no enable/action group to show
+    if (state->filter_keyboard_active)
     {
-        if (strcmp(state->action_button, "") != 0 && !state->list_state->items[state->list_state->selected].features.hide_action)
+        GFX_blitButtonGroup((char *[]){"B", "DELETE", state->filter_button, "DONE", NULL}, 0, screen, 0);
+    }
+    else if (state->list_state->selected >= 0)
+    {
+        // this should only display the enable button if the current item supports enabling
+        // and should only display the action button if it is assigned to a button
+        if (current_item_supports_enabling && strcmp(state->enable_button, "") != 0)
         {
-            GFX_blitButtonGroup((char *[]){state->enable_button, enable_button_text, state->action_button, state->action_text, NULL}, 0, screen, 0);
+            if (strcmp(state->action_button, "") != 0 && !state->list_state->items[state->list_state->visible[state->list_state->selected]].features.hide_action)
+            {
+                GFX_blitButtonGroup((char *[]){state->enable_button, enable_button_text, state->action_button, state->action_text, NULL}, 0, screen, 0);
+            }
+            else
+            {
+                GFX_blitButtonGroup((char *[]){state->enable_button, enable_button_text, NULL}, 0, screen, 0);
+            }
         }
-        else
+        else if (strcmp(state->action_button, "") != 0 && !state->list_state->items[state->list_state->visible[state->list_state->selected]].features.hide_action)
         {
-            GFX_blitButtonGroup((char *[]){state->enable_button, enable_button_text, NULL}, 0, screen, 0);
+            GFX_blitButtonGroup((char *[]){state->action_button, state->action_text, NULL}, 0, screen, 0);
         }
     }
-    else if (strcmp(state->action_button, "") != 0 && !state->list_state->items[state->list_state->selected].features.hide_action)
+
+    // draw the filter keyboard overlay on top of the list when it is open
+    if (state->filter_keyboard_active)
     {
-        GFX_blitButtonGroup((char *[]){state->action_button, state->action_text, NULL}, 0, screen, 0);
+        draw_filter_keyboard(screen, state);
     }
 
     // don't forget to reset the should_redraw flag
@@ -2693,6 +3277,28 @@ void signal_handler(int signal)
         signal_exit_code = ExitCodeError;
 }
 
+// filter_button_mask maps a --filter-button name to its PAD button mask, or
+// BTN_NONE for an unsupported name. Only non-face, non-menu buttons are allowed
+// so the toggle never collides with the A/B/X keyboard controls.
+static int filter_button_mask(const char *name)
+{
+    if (name == NULL)
+        return BTN_NONE;
+    if (strcmp(name, "SELECT") == 0)
+        return BTN_SELECT;
+    if (strcmp(name, "START") == 0)
+        return BTN_START;
+    if (strcmp(name, "L1") == 0)
+        return BTN_L1;
+    if (strcmp(name, "R1") == 0)
+        return BTN_R1;
+    if (strcmp(name, "L2") == 0)
+        return BTN_L2;
+    if (strcmp(name, "R2") == 0)
+        return BTN_R2;
+    return BTN_NONE;
+}
+
 // parse_arguments parses the arguments using getopt and updates the app state
 // supports the following flags:
 // - --action-button <button> (default: "")
@@ -2717,6 +3323,11 @@ void signal_handler(int signal)
 // - --scroll-method <method> (default: "false")
 // - --write-location <location> (default: "-")
 // - --write-value <value> (default: "selected")
+// - --allow-filter <true|false> (default: false)
+// - --filter-button <button> (default: "SELECT")
+// - --display-filter-keyboard <true|false> (default: false)
+// - --filter-input <text> (default: empty string)
+// - --filter-text-file <path> (default: empty string)
 bool parse_arguments(struct AppState *state, int argc, char *argv[])
 {
     // long-only options use val codes above the ASCII range so they need no
@@ -2725,6 +3336,11 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     {
         OPT_SCREEN_RESOLUTION = 1000,
         OPT_FALLBACK_IMAGE,
+        OPT_ALLOW_FILTER,
+        OPT_FILTER_BUTTON,
+        OPT_DISPLAY_FILTER_KEYBOARD,
+        OPT_FILTER_INPUT,
+        OPT_FILTER_TEXT_FILE,
     };
     static struct option long_options[] = {
         {"action-button", required_argument, 0, 'a'},
@@ -2754,6 +3370,11 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"alphabetic-scroll", no_argument, 0, 'S'},
         {"screen-resolution", required_argument, 0, OPT_SCREEN_RESOLUTION},
         {"fallback-image", required_argument, 0, OPT_FALLBACK_IMAGE},
+        {"allow-filter", required_argument, 0, OPT_ALLOW_FILTER},
+        {"filter-button", required_argument, 0, OPT_FILTER_BUTTON},
+        {"display-filter-keyboard", required_argument, 0, OPT_DISPLAY_FILTER_KEYBOARD},
+        {"filter-input", required_argument, 0, OPT_FILTER_INPUT},
+        {"filter-text-file", required_argument, 0, OPT_FILTER_TEXT_FILE},
         {0, 0, 0, 0}};
 
     int opt;
@@ -2845,6 +3466,45 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case OPT_FALLBACK_IMAGE:
             strncpy(state->fallback_image, optarg, sizeof(state->fallback_image) - 1);
             break;
+        case OPT_ALLOW_FILTER:
+            if (strcmp(optarg, "true") == 0)
+            {
+                state->allow_filter = true;
+            }
+            else if (strcmp(optarg, "false") == 0)
+            {
+                state->allow_filter = false;
+            }
+            else
+            {
+                log_error("Invalid allow-filter value provided. Please provide 'true' or 'false'.");
+                return false;
+            }
+            break;
+        case OPT_FILTER_BUTTON:
+            strncpy(state->filter_button, optarg, sizeof(state->filter_button) - 1);
+            break;
+        case OPT_DISPLAY_FILTER_KEYBOARD:
+            if (strcmp(optarg, "true") == 0)
+            {
+                state->display_filter_keyboard = true;
+            }
+            else if (strcmp(optarg, "false") == 0)
+            {
+                state->display_filter_keyboard = false;
+            }
+            else
+            {
+                log_error("Invalid display-filter-keyboard value provided. Please provide 'true' or 'false'.");
+                return false;
+            }
+            break;
+        case OPT_FILTER_INPUT:
+            strncpy(state->filter_input, optarg, sizeof(state->filter_input) - 1);
+            break;
+        case OPT_FILTER_TEXT_FILE:
+            strncpy(state->filter_text_file, optarg, sizeof(state->filter_text_file) - 1);
+            break;
         default:
             return false;
         }
@@ -2934,6 +3594,14 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         return false;
     }
 
+    // validate the filter toggle button; only non-face, non-menu buttons are
+    // allowed so it never collides with the A/B/X keyboard controls
+    if (filter_button_mask(state->filter_button) == BTN_NONE)
+    {
+        log_error("Invalid filter button provided. Please provide one of 'SELECT', 'START', 'L1', 'R1', 'L2', or 'R2'.");
+        return false;
+    }
+
     if (strlen(state->file) == 0)
     {
         log_error("No input provided");
@@ -3020,13 +3688,19 @@ int write_output(struct AppState *state)
             return state->exit_code;
         }
 
+        // nothing is selected (e.g. an active filter matched no items)
+        if (state->list_state->selected < 0)
+        {
+            return state->exit_code;
+        }
+
         if (strcmp(state->write_location, "-") == 0)
         {
-            log_info(state->list_state->items[state->list_state->selected].name);
+            log_info(state->list_state->items[state->list_state->visible[state->list_state->selected]].name);
         }
         else
         {
-            write_to_file(state->write_location, state->list_state->items[state->list_state->selected].name);
+            write_to_file(state->write_location, state->list_state->items[state->list_state->visible[state->list_state->selected]].name);
         }
         return state->exit_code;
     }
@@ -3034,7 +3708,11 @@ int write_output(struct AppState *state)
     JSON_Value *root_value = json_value_init_object();
     JSON_Object *root_object = json_value_get_object(root_value);
     char *serialized_string = NULL;
-    json_object_set_number(root_object, "selected", state->list_state->selected);
+    // map the selected display position back to its source index for output
+    int selected_source_index = (state->list_state->selected >= 0)
+                                    ? state->list_state->visible[state->list_state->selected]
+                                    : -1;
+    json_object_set_number(root_object, "selected", selected_source_index);
 
     JSON_Array *items = json_array(json_value_init_array());
     for (int i = 0; i < state->list_state->item_count; i++)
@@ -3149,6 +3827,15 @@ int write_output(struct AppState *state)
             }
         }
 
+        if (state->list_state->items[i].features.has_display_on_filter)
+        {
+            if (json_object_dotset_boolean(features, "display_on_filter", state->list_state->items[i].features.display_on_filter))
+            {
+                log_error("Failed to set display_on_filter");
+                return ExitCodeSerializeError;
+            }
+        }
+
         if (state->list_state->items[i].has_options)
         {
             if (json_object_dotset_number(obj, "selected", state->list_state->items[i].selected) == JSONFailure)
@@ -3245,6 +3932,7 @@ int main(int argc, char *argv[])
     char default_title_alignment[1024] = "left";
     char default_scroll_method[1024] = "false";
     char default_write_location[1024] = "-";
+    char default_filter_button[1024] = "SELECT";
     struct AppState state = {
         .exit_code = ExitCodeSuccess,
         .quitting = 0,
@@ -3283,6 +3971,7 @@ int main(int argc, char *argv[])
     strncpy(state.title_alignment, default_title_alignment, sizeof(state.title_alignment) - 1);
     strncpy(state.scroll_method, default_scroll_method, sizeof(state.scroll_method) - 1);
     strncpy(state.write_location, default_write_location, sizeof(state.write_location) - 1);
+    strncpy(state.filter_button, default_filter_button, sizeof(state.filter_button) - 1);
 
     // parse the arguments
     if (!parse_arguments(&state, argc, argv))
@@ -3367,6 +4056,23 @@ int main(int argc, char *argv[])
     {
         log_error("Failed to open fonts");
         return ExitCodeError;
+    }
+
+    // seed the initial filter and optionally open the keyboard, now that the
+    // list, fonts, and screen are ready. This runs after the selectable-items
+    // guard so an initial filter that matches nothing does not abort startup;
+    // the main loop and draw path tolerate an empty (selected == -1) result.
+    if (state.allow_filter)
+    {
+        if (state.filter_input[0] != '\0')
+        {
+            strncpy(state.filter_text, state.filter_input, sizeof(state.filter_text) - 1);
+            ListState_ApplyFilter(state.list_state, state.filter_text, state.max_row_count);
+        }
+        if (state.display_filter_keyboard)
+        {
+            open_filter_keyboard(&state);
+        }
     }
 
     // get initial wifi state
@@ -3484,6 +4190,19 @@ int main(int argc, char *argv[])
     }
 
     int exit_code = write_output(&state);
+
+    // when filtering is enabled, emit the final filter value: to --filter-text-file
+    // if set, and always as the last line of stderr. This runs regardless of the
+    // exit code (signal-driven exits are handled above and skip this).
+    if (state.allow_filter)
+    {
+        if (state.filter_text_file[0] != '\0')
+        {
+            write_to_file(state.filter_text_file, state.filter_text);
+        }
+        fprintf(stderr, "%s\n", state.filter_text);
+    }
+
     if (exit_code != ExitCodeSuccess)
     {
         return exit_code;

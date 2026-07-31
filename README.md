@@ -188,7 +188,56 @@ minui-list --file list.json --scroll-method wrap
 # the scroll method can also be set via the top-level "scroll_method" JSON
 # property; when present in the JSON it takes precedence over the flag
 minui-list --file list.json --scroll-method pong
+
+# enable the inline filter keyboard
+# filtering is off by default; --allow-filter must be set to "true"
+# to allow it. an on-screen keyboard can then be toggled with a button
+# and the list is filtered on-the-fly, with the matched text highlighted
+minui-list --file list.json --allow-filter true
+
+# choose the button that toggles the keyboard
+# the default is "SELECT"; the supported values are "SELECT", "START",
+# "L1", "R1", "L2", and "R2" (face buttons are reserved for the keyboard)
+minui-list --file list.json --allow-filter true --filter-button L1
+
+# show the keyboard as soon as the list opens
+# false by default
+minui-list --file list.json --allow-filter true --display-filter-keyboard true
+
+# seed the initial filter text
+minui-list --file list.json --allow-filter true --filter-input "hack"
+
+# on exit, the final filter value is written as the last line of stderr;
+# it can also be written to a file with --filter-text-file
+minui-list --file list.json --allow-filter true --filter-text-file filter.txt
 ```
+
+### Filtering
+
+When `--allow-filter true` is set, pressing the filter button (`SELECT` by
+default, configurable with `--filter-button`) opens an on-screen keyboard at the
+bottom of the screen. The list filters as you type, and the matched portion of
+each item's name is highlighted. Matching is case-insensitive.
+
+While the keyboard is open:
+
+- the **D-pad** moves the key cursor
+- **A** activates the focused key (`shift` cycles the lowercase/uppercase/special
+  layouts, `space` types a space, `enter` closes the keyboard)
+- **B** deletes the last character
+- **X** clears the whole filter
+- the filter button (e.g. `SELECT`) closes the keyboard
+
+With the keyboard closed, the list shows only the matching items and the normal
+list controls apply, so you can navigate and select from the filtered results.
+
+Headers are excluded from matching and are hidden while a filter is active. An
+item with `features.display_on_filter` set to `true` stays visible even when it
+does not match, which is useful for pinning an entry such as an "Add All" row to
+the top of the list.
+
+The keyboard matches the layout and behavior of the sibling `minui-keyboard`
+tool, so it supports letters, numbers, symbols, and spaces.
 
 To create a list of items from newline-delimited strings, you can use jq:
 
@@ -280,6 +329,7 @@ Item properties:
 - features.background_color: (optional, type: `string`, default: `#000000`) a hexadecimal color
 - features.background_image: (optional, type: `string`, default: empty string) a full path to a background image
 - features.can_disable: (optional, type: `boolean`, default: `false`) whether or not an option can be enabled or disabled
+- features.display_on_filter: (optional, type: `boolean`, default: `false`) when a filter is active (see the Filtering section), keep this item visible even if its name does not match. Useful for pinning an entry such as an "Add All" row to the top of the list.
 - features.confirm_text: (optional, type: `string`, default: ``) text to use to override the default confirm text for the entry
 - features.disabled: (optional, type: `boolean`, default: `false`) whether the field shows up as enabled or disabled
 - features.draw_arrows: (optional, type: `boolean`, default: `false`) whether to show options with arrows around them (hex color boxes will be outside of the arrow)
@@ -309,6 +359,7 @@ Item example:
     "can_disable": false,
     "confirm_text": "SAVE",
     "disabled": false,
+    "display_on_filter": false,
     "draw_arrows": false,
     "hide_action": false,
     "hide_cancel": false,
