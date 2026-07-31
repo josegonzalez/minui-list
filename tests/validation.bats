@@ -129,3 +129,30 @@ setup() {
     [ "$status" -ne 139 ]
     [[ "$output" == *"missing a name"* ]]
 }
+
+# issue 124 - JSON object form should work without --item-key
+#
+# a root object is now parsed as the object form using the default "items" key,
+# so it no longer needs --item-key. these inputs fail object-form validation
+# (proving the object path is taken); before the fix they yielded the generic
+# "No selectable items found".
+
+@test "object form uses the default items key without --item-key" {
+    JSONFILE="$(mktemp "${BATS_TEST_TMPDIR:-/tmp}/minui-list-json.XXXXXX")"
+    printf '{"items":[{}]}' > "$JSONFILE"
+    run "$BIN" --file "$JSONFILE" --format json
+    [ "$status" -eq 1 ]
+    [ "$status" -ne 139 ]
+    [[ "$output" == *"missing a name"* ]]
+    [[ "$output" != *"No selectable items found"* ]]
+}
+
+@test "strings under the default items key are rejected without --item-key" {
+    JSONFILE="$(mktemp "${BATS_TEST_TMPDIR:-/tmp}/minui-list-json.XXXXXX")"
+    printf '{"items":["Apple","Banana"]}' > "$JSONFILE"
+    run "$BIN" --file "$JSONFILE" --format json
+    [ "$status" -eq 1 ]
+    [ "$status" -ne 139 ]
+    [[ "$output" == *"is not an object"* ]]
+    [[ "$output" != *"No selectable items found"* ]]
+}
