@@ -63,6 +63,36 @@ setup() {
     [[ "$output" != *"unrecognized option"* ]]
 }
 
+# issue 12 - --scroll-method autoscroll
+
+@test "--scroll-method wrap is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --scroll-method wrap
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"Invalid scroll method"* ]]
+    [[ "$output" != *"unrecognized option"* ]]
+}
+
+@test "--scroll-method pong is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --scroll-method pong
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"Invalid scroll method"* ]]
+}
+
+@test "--scroll-method false is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --scroll-method false
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"Invalid scroll method"* ]]
+}
+
+@test "invalid scroll method is rejected" {
+    run "$BIN" --file "$TESTFILE" --scroll-method bounce
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid scroll method provided"* ]]
+}
+
 # surviving validation
 
 @test "invalid format is rejected" {

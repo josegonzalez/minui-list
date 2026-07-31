@@ -20,6 +20,7 @@
 #include "utils.h"
 
 #include "list_nav.h"
+#include "list_scroll.h"
 
 // Platform compatibility: tg5050 (NextUI) uses PWR_isOnline instead of PLAT_isOnline
 #ifdef PLATFORM_NEXTUI
@@ -214,6 +215,16 @@ struct AppState
     bool disable_auto_sleep;
     // whether alphabetic scroll (L1/R1 letter jumping) is enabled
     bool alphabetic_scroll;
+    // how to autoscroll over-long selected item text ('false', 'wrap', 'pong')
+    char scroll_method[1024];
+    // timestamp (ms) when the current row's autoscroll animation started
+    uint32_t scroll_anim_start_ms;
+    // the selected index the autoscroll clock is tracking (-1 = none yet)
+    int scroll_anim_selected;
+    // the selected option index the autoscroll clock is tracking (-1 = none yet)
+    int scroll_anim_option;
+    // whether a row is currently autoscrolling (drives per-frame redraws)
+    bool scroll_active;
     // maximum number of visible list rows
     int max_row_count;
     // the button to display on the Enable button
@@ -525,6 +536,19 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         if (json_object_get_boolean(root_object, "alphabetic_scroll") == 1)
         {
             app_state->alphabetic_scroll = true;
+        }
+    }
+
+    // Check for scroll_method in root JSON object. When present it takes
+    // precedence over the --scroll-method flag. An unrecognized value is not a
+    // hard error: ScrollMethod_Parse maps it to SCROLL_NONE at render time.
+    if (root_object != NULL && json_object_has_value(root_object, "scroll_method"))
+    {
+        const char *scroll_method = json_object_get_string(root_object, "scroll_method");
+        if (scroll_method != NULL)
+        {
+            strncpy(app_state->scroll_method, scroll_method, sizeof(app_state->scroll_method) - 1);
+            app_state->scroll_method[sizeof(app_state->scroll_method) - 1] = '\0';
         }
     }
 
@@ -1801,6 +1825,19 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
     bool current_item_is_enabled = false;
     bool current_item_is_header = false;
     int selected_row = state->list_state->selected - state->list_state->first_visible;
+
+    // autoscroll configuration for the selected row's over-long name; cleared
+    // each frame and re-armed below whenever a row is actually scrolling
+    enum ScrollMethod scroll_method = ScrollMethod_Parse(state->scroll_method);
+    struct ScrollConfig scroll_config = {
+        .speed_px_per_sec = SCALE1(40),
+        .start_pause_ms = 1000,
+        .end_pause_ms = 1000,
+        .gap_px = SCALE1(40),
+        .overflow_threshold_px = SCALE1(4),
+    };
+    state->scroll_active = false;
+
     for (int i = state->list_state->first_visible, j = 0; i < state->list_state->last_visible; i++, j++)
     {
         int available_width = (screen->w) - SCALE1(PADDING * 2);
@@ -1875,7 +1912,57 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
 
         char truncated_display_text[256];
         int text_width = GFX_truncateText(state->fonts.large, display_text, truncated_display_text, available_width, SCALE1(BUTTON_PADDING * 2));
+
+        // Decide whether this (selected) row should autoscroll its over-long
+        // name instead of showing the "..." ellipsis. Only the selected,
+        // selectable, non-hex row scrolls; every other row keeps the truncated
+        // text unchanged.
+        bool row_scrolls = false;
+        int scroll_offset = 0;
+        int scroll_full_width = 0;
+        int scroll_viewport = 0;
+        if (j == selected_row && scroll_method != SCROLL_NONE && !is_hex_color &&
+            !state->list_state->items[i].features.is_header &&
+            !state->list_state->items[i].features.unselectable)
+        {
+            TTF_SizeUTF8(state->fonts.large, display_text, &scroll_full_width, NULL);
+            scroll_viewport = available_width - SCALE1(BUTTON_PADDING * 2);
+
+            // keep the marquee clear of a right-aligned option value, if present
+            if (strcmp(display_selected_text, "") != 0)
+            {
+                int value_width = 0;
+                TTF_SizeUTF8(state->fonts.large, display_selected_text, &value_width, NULL);
+                int value_left = screen->w - value_width - SCALE1(PADDING + BUTTON_PADDING) - color_box_space;
+                int value_viewport = value_left - SCALE1(PADDING + BUTTON_PADDING) - SCALE1(PADDING);
+                if (value_viewport < scroll_viewport)
+                {
+                    scroll_viewport = value_viewport;
+                }
+            }
+
+            if (scroll_viewport > 0 && (scroll_full_width - scroll_viewport) > scroll_config.overflow_threshold_px)
+            {
+                // reset the animation clock when the selected row or its option changes
+                if (state->scroll_anim_selected != state->list_state->selected ||
+                    state->scroll_anim_option != state->list_state->items[i].selected)
+                {
+                    state->scroll_anim_selected = state->list_state->selected;
+                    state->scroll_anim_option = state->list_state->items[i].selected;
+                    state->scroll_anim_start_ms = SDL_GetTicks();
+                }
+                uint32_t scroll_elapsed = SDL_GetTicks() - state->scroll_anim_start_ms;
+                scroll_offset = TextScroll_Offset(scroll_method, &scroll_config, scroll_elapsed, scroll_full_width, scroll_viewport);
+                row_scrolls = true;
+            }
+        }
+
         int pill_width = MIN(available_width, text_width) + color_box_space;
+        if (row_scrolls)
+        {
+            // pin the pill to the full available width so the marquee frame is stable
+            pill_width = available_width + color_box_space;
+        }
 
         if (j == selected_row)
         {
@@ -1927,6 +2014,12 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
                 }
             }
 
+            // a scrolling marquee always renders left-origin, so pin its pill left
+            if (row_scrolls)
+            {
+                pill_x_pos = SCALE1(PADDING);
+            }
+
             if (strcmp(display_selected_text, "") != 0)
             {
                 GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){pill_x_pos, SCALE1(PADDING + (j * PILL_SIZE) + initial_list_y_padding), screen->w - SCALE1(PADDING + BUTTON_MARGIN), SCALE1(PILL_SIZE)});
@@ -1936,7 +2029,16 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
         }
 
         SDL_Surface *text;
-        text = TTF_RenderUTF8_Blended(state->fonts.large, truncated_display_text, text_color);
+        if (row_scrolls)
+        {
+            // render the full, untruncated name for the marquee
+            text = TTF_RenderUTF8_Blended(state->fonts.large, display_text, text_color);
+        }
+        else
+        {
+            text = TTF_RenderUTF8_Blended(state->fonts.large, truncated_display_text, text_color);
+        }
+        int text_surface_width = text->w;
 
         // Calculate text position based on alignment
         int text_x_pos;
@@ -1974,31 +2076,62 @@ void draw_screen(SDL_Surface *screen, struct AppState *state, int ow, bool shoul
             }
         }
 
+        // a scrolling marquee always renders left-origin
+        if (row_scrolls)
+        {
+            text_x_pos = SCALE1(PADDING + BUTTON_PADDING);
+        }
+
+        int text_y_pos = SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 4);
         SDL_Rect pos = {
             text_x_pos,
-            SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 4),
+            text_y_pos,
             text->w,
             text->h};
 
-        // draw the text as a black shadow
-        if (should_draw_background_image && j != selected_row)
+        if (row_scrolls)
         {
-            // COLOR_BLACK
-            SDL_Surface *accent_text;
-            accent_text = TTF_RenderUTF8_Blended(state->fonts.large, truncated_display_text, COLOR_BLACK);
-            SDL_Rect accent_pos = {
-                shadow_x_pos,
-                SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 4 + 2),
-                accent_text->w,
-                accent_text->h};
-            SDL_BlitSurface(accent_text, NULL, screen, &accent_pos);
-            SDL_FreeSurface(accent_text);
+            // clip the marquee to the pill interior and blit the full text at the
+            // animated offset; wrap draws a second copy after a gap so the loop
+            // is seamless
+            int clip_y_pos = SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding);
+            SDL_Rect scroll_clip = {text_x_pos, clip_y_pos, scroll_viewport, SCALE1(PILL_SIZE)};
+            SDL_SetClipRect(screen, &scroll_clip);
+
+            SDL_Rect scroll_pos = {text_x_pos - scroll_offset, text_y_pos, text->w, text->h};
+            SDL_BlitSurface(text, NULL, screen, &scroll_pos);
+            if (scroll_method == SCROLL_WRAP)
+            {
+                SDL_Rect scroll_pos_2 = {text_x_pos - scroll_offset + scroll_full_width + scroll_config.gap_px, text_y_pos, text->w, text->h};
+                SDL_BlitSurface(text, NULL, screen, &scroll_pos_2);
+            }
+
+            SDL_SetClipRect(screen, NULL);
+            state->scroll_active = true;
+        }
+        else
+        {
+            // draw the text as a black shadow
+            if (should_draw_background_image && j != selected_row)
+            {
+                // COLOR_BLACK
+                SDL_Surface *accent_text;
+                accent_text = TTF_RenderUTF8_Blended(state->fonts.large, truncated_display_text, COLOR_BLACK);
+                SDL_Rect accent_pos = {
+                    shadow_x_pos,
+                    SCALE1(PADDING + ((i - state->list_state->first_visible) * PILL_SIZE) + initial_list_y_padding + 4 + 2),
+                    accent_text->w,
+                    accent_text->h};
+                SDL_BlitSurface(accent_text, NULL, screen, &accent_pos);
+                SDL_FreeSurface(accent_text);
+            }
+
+            SDL_BlitSurface(text, NULL, screen, &pos);
         }
 
-        SDL_BlitSurface(text, NULL, screen, &pos);
         SDL_FreeSurface(text);
 
-        int initial_cube_x_pos = text_x_pos + text->w;
+        int initial_cube_x_pos = text_x_pos + text_surface_width;
 
         // draw the selected option text
         if (strcmp(display_selected_text, "") != 0)
@@ -2243,6 +2376,7 @@ void signal_handler(int signal)
 // - --title <title> (default: empty string)
 // - --title-alignment <alignment> (default: "left")
 // - --item-key <key> (default: "items")
+// - --scroll-method <method> (default: "false")
 // - --write-location <location> (default: "-")
 // - --write-value <value> (default: "selected")
 bool parse_arguments(struct AppState *state, int argc, char *argv[])
@@ -2266,6 +2400,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         {"item-key", required_argument, 0, 'K'},
         {"title", required_argument, 0, 't'},
         {"title-alignment", required_argument, 0, 'T'},
+        {"scroll-method", required_argument, 0, 'r'},
         {"write-location", required_argument, 0, 'w'},
         {"write-value", required_argument, 0, 'W'},
         {"selected", required_argument, 0, 's'},
@@ -2278,7 +2413,7 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     char *font_path_default = NULL;
     char *font_path_large = NULL;
     char *font_path_medium = NULL;
-    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:s:t:T:w:W:XUHS", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "a:A:b:B:c:C:d:D:e:f:F:l:L:M:K:r:s:t:T:w:W:XUHS", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -2339,6 +2474,9 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
         case 'T':
             strncpy(state->title_alignment, optarg, sizeof(state->title_alignment) - 1);
             break;
+        case 'r':
+            strncpy(state->scroll_method, optarg, sizeof(state->scroll_method) - 1);
+            break;
         case 'w':
             strncpy(state->write_location, optarg, sizeof(state->write_location) - 1);
             break;
@@ -2363,6 +2501,13 @@ bool parse_arguments(struct AppState *state, int argc, char *argv[])
     if (strcmp(state->title_alignment, "left") != 0 && strcmp(state->title_alignment, "center") != 0 && strcmp(state->title_alignment, "right") != 0)
     {
         log_error("Invalid title alignment provided. Please provide a value of 'left', 'center', or 'right'.");
+        return false;
+    }
+
+    // validate scroll method
+    if (strcmp(state->scroll_method, "false") != 0 && strcmp(state->scroll_method, "wrap") != 0 && strcmp(state->scroll_method, "pong") != 0)
+    {
+        log_error("Invalid scroll method provided. Please provide a value of 'false', 'wrap', or 'pong'.");
         return false;
     }
 
@@ -2732,6 +2877,7 @@ int main(int argc, char *argv[])
     char default_write_value[1024] = "selected";
     char default_title[1024] = "";
     char default_title_alignment[1024] = "left";
+    char default_scroll_method[1024] = "false";
     char default_write_location[1024] = "-";
     struct AppState state = {
         .exit_code = ExitCodeSuccess,
@@ -2742,6 +2888,8 @@ int main(int argc, char *argv[])
         .always_show_confirm = false,
         .disable_auto_sleep = false,
         .initial_selected = -1,
+        .scroll_anim_selected = -1,
+        .scroll_anim_option = -1,
         .fonts = {
             .large = NULL,
             .medium = NULL,
@@ -2767,6 +2915,7 @@ int main(int argc, char *argv[])
     strncpy(state.write_value, default_write_value, sizeof(state.write_value) - 1);
     strncpy(state.title, default_title, sizeof(state.title) - 1);
     strncpy(state.title_alignment, default_title_alignment, sizeof(state.title_alignment) - 1);
+    strncpy(state.scroll_method, default_scroll_method, sizeof(state.scroll_method) - 1);
     strncpy(state.write_location, default_write_location, sizeof(state.write_location) - 1);
 
     // parse the arguments
@@ -2899,6 +3048,14 @@ int main(int argc, char *argv[])
 
         // force a redraw if the power state changed
         if (power_redraw)
+        {
+            state.redraw = 1;
+        }
+
+        // keep redrawing while a row is autoscrolling so the marquee animates.
+        // this is self-sustaining: draw_screen re-arms scroll_active each frame
+        // it draws a scrolling row, and clears it once nothing is scrolling.
+        if (state.scroll_active)
         {
             state.redraw = 1;
         }
