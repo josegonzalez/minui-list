@@ -528,14 +528,20 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         }
     }
 
+    // decide array form vs object form from the root JSON type, not from whether
+    // --item-key was supplied. a root object is the object form (items live under
+    // item_key, "items" by default); a root array is the array-of-strings form and
+    // ignores item_key.
+    bool use_object_form = json_value_get_type(root_value) == JSONObject;
+
     JSON_Array *items_array;
-    if (strlen(item_key) == 0)
+    if (use_object_form)
     {
-        items_array = json_value_get_array(root_value);
+        items_array = json_value_get_array(json_object_get_value(json_value_get_object(root_value), item_key));
     }
     else
     {
-        items_array = json_value_get_array(json_object_get_value(json_value_get_object(root_value), item_key));
+        items_array = json_value_get_array(root_value);
     }
 
     size_t item_count = json_array_get_count(items_array);
@@ -550,7 +556,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
         char error_message[256];
         error_message[0] = '\0';
 
-        if (strlen(item_key) == 0)
+        if (!use_object_form)
         {
             if (json_value_get_type(element) != JSONString)
             {
@@ -593,7 +599,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
     state->items = malloc(sizeof(struct ListItem) * item_count);
     state->has_options = false;
 
-    if (strlen(item_key) == 0)
+    if (!use_object_form)
     {
         for (size_t i = 0; i < item_count; i++)
         {
@@ -1058,7 +1064,7 @@ struct ListState *ListState_New(const char *filename, const char *format, const 
     state->item_count = item_count;
 
     // read the requested initial selection from JSON (if any)
-    if (strlen(item_key) > 0)
+    if (use_object_form)
     {
         JSON_Object *root_obj = json_value_get_object(root_value);
         if (root_obj && json_object_has_value(root_obj, "selected"))
@@ -2722,7 +2728,7 @@ int main(int argc, char *argv[])
     char default_confirm_text[1024] = "SELECT";
     char default_file[1024] = "";
     char default_format[1024] = "json";
-    char default_item_key[1024] = "";
+    char default_item_key[1024] = "items";
     char default_write_value[1024] = "selected";
     char default_title[1024] = "";
     char default_title_alignment[1024] = "left";

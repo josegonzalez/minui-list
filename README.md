@@ -21,10 +21,15 @@ This tool is designed to be used as part of a larger minui app.
 # ["item-1", "item-2", "item-3"]
 minui-list --file list.json
 
-# you can also read from a JSON file that containing an object with an array of objects at a specific key
+# you can also read from a JSON file that contains an object with an array of objects
 # note that the objects must have a "name" key, which will be used as the item name
 # {"items": [{"name": "item-1"}, {"name": "item-2"}, {"name": "item-3"}]}
-minui-list --file list.json --item-key "items"
+minui-list --file list.json
+
+# --item-key defaults to "items", so it only needs to be passed when the array
+# lives under a differently-named key
+# {"choices": [{"name": "item-1"}, {"name": "item-2"}, {"name": "item-3"}]}
+minui-list --file list.json --item-key "choices"
 
 # you can also read from newline-delimited strings by specifying the --format flag
 # the default format is "json", but you can also specify "text"
@@ -212,6 +217,9 @@ validation error rather than rendering.
 ##### Object
 
 A list of objects set at a particular key. May or may not be formatted. Comments are allowed.
+
+The key defaults to `items`, so the object form below works without any extra flags.
+Pass `--item-key <key>` only when the array lives under a differently-named key.
 
 ```json
 {
