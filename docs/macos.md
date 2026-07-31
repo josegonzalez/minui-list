@@ -60,6 +60,11 @@ exercised; there is no backend to actually change the system volume, so the bar 
 representative level. Brightness uses the Menu (Space) modifier on device, but minui-list exits on
 Menu release, so brightness is not a clean interaction on macOS.
 
+When `--allow-filter true` is set, Select (') is the default button that toggles the inline filter
+keyboard (see the Filtering section of the main README). With the keyboard open, the mapped A (S),
+B (A), and X (W) keys type the focused key, delete, and clear the filter respectively, and the
+arrow keys move the key cursor.
+
 The L2/R2/L3/R3 buttons are not mapped.
 
 ## Quitting

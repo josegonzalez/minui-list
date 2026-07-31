@@ -231,3 +231,79 @@ setup() {
     [[ "$output" == *"Invalid format provided"* ]]
     [[ "$output" != *"unrecognized option"* ]]
 }
+
+# issue 11 - inline keyboard for filtering the list
+
+@test "--allow-filter true is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --allow-filter true
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"Invalid allow-filter"* ]]
+    [[ "$output" != *"unrecognized option"* ]]
+}
+
+@test "--allow-filter false is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --allow-filter false
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"Invalid allow-filter"* ]]
+}
+
+@test "invalid --allow-filter value is rejected" {
+    run "$BIN" --file "$TESTFILE" --allow-filter maybe
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid allow-filter value provided"* ]]
+}
+
+@test "--filter-button SELECT is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --filter-button SELECT
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"Invalid filter button"* ]]
+}
+
+@test "--filter-button L1 is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --filter-button L1
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"Invalid filter button"* ]]
+}
+
+@test "invalid --filter-button value is rejected" {
+    run "$BIN" --file "$TESTFILE" --filter-button ZZZ
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid filter button provided"* ]]
+}
+
+@test "face-button --filter-button is rejected" {
+    run "$BIN" --file "$TESTFILE" --filter-button A
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid filter button provided"* ]]
+}
+
+@test "--display-filter-keyboard true is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --display-filter-keyboard true
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"Invalid display-filter-keyboard"* ]]
+}
+
+@test "invalid --display-filter-keyboard value is rejected" {
+    run "$BIN" --file "$TESTFILE" --display-filter-keyboard maybe
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid display-filter-keyboard value provided"* ]]
+}
+
+@test "--filter-input is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --filter-input hack
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"unrecognized option"* ]]
+}
+
+@test "--filter-text-file is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --filter-text-file /tmp/filter.txt
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"unrecognized option"* ]]
+}
