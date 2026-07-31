@@ -48,11 +48,19 @@ The following keyboard keys are mapped to controller buttons:
 | Select | ' (apostrophe) |
 | Menu | Space |
 | Power | Backspace |
+| Minus | - (hyphen) |
+| Plus | = (equals) |
 
 L1 (E) and R1 (R) drive alphabetical scrolling when `--alphabetic-scroll` is enabled: R1 jumps
 to the next letter group and L1 to the previous one, wrapping around at the ends of the list.
 
-The L2/R2/L3/R3 and Plus/Minus buttons are not mapped.
+Minus (-) and Plus (=) adjust the volume and raise the settings overlay: the level bar in the
+top-right and a hint pill in the bottom-left. On macOS these are wired only so the overlay can be
+exercised; there is no backend to actually change the system volume, so the bar shows a fixed
+representative level. Brightness uses the Menu (Space) modifier on device, but minui-list exits on
+Menu release, so brightness is not a clean interaction on macOS.
+
+The L2/R2/L3/R3 buttons are not mapped.
 
 ## Quitting
 

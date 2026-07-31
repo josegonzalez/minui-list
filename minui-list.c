@@ -19,6 +19,7 @@
 #include "api.h"
 #include "utils.h"
 
+#include "list_hint.h"
 #include "list_nav.h"
 #include "list_scroll.h"
 
@@ -191,7 +192,8 @@ struct AppState
     int redraw;
     // whether to show the hardware group
     int show_hardware_group;
-    // whether to show the brightness or hardware state
+    // which hardware settings overlay to show, matching the MinUI SDK
+    // convention written back by PWR_update: 0 = none, 1 = brightness, 2 = volume
     int show_brightness_setting;
     // the button to display on the Action button
     char action_button[1024];
@@ -3019,7 +3021,10 @@ int main(int argc, char *argv[])
 
         // handle turning the on/off screen on/off
         // as well as general power management
-        PWR_update(&state.redraw, NULL, NULL, NULL);
+        // the second argument receives the active settings overlay
+        // (0 = none, 1 = brightness, 2 = volume) so the volume/brightness
+        // bar and hint can be drawn while the user changes those settings
+        PWR_update(&state.redraw, &state.show_brightness_setting, NULL, NULL);
         bool power_redraw = false;
         if (state.redraw)
         {
@@ -3071,21 +3076,23 @@ int main(int argc, char *argv[])
             int ow = 0;
             if (state.show_hardware_group)
             {
-                // draw the hardware information in the top-right
+                // draw the hardware information in the top-right (battery/wifi,
+                // or the volume/brightness bar while a setting is being changed)
                 ow = GFX_blitHardwareGroup(screen, state.show_brightness_setting);
+            }
 
-                if (!has_left_button_group(&state, state.list_state))
-                {
-                    // draw the setting hints
-                    if (state.show_brightness_setting && !GetHDMI())
-                    {
-                        GFX_blitHardwareHints(screen, state.show_brightness_setting);
-                    }
-                    else
-                    {
-                        GFX_blitButtonGroup((char *[]){BTN_SLEEP == BTN_POWER ? "POWER" : "MENU", "SLEEP", NULL}, 0, screen, 0);
-                    }
-                }
+            // decide what belongs in the bottom-left pill slot
+            switch (BottomLeftHint_For(state.show_hardware_group, state.show_brightness_setting, has_left_button_group(&state, state.list_state), GetHDMI()))
+            {
+            case BOTTOM_LEFT_SETTING_HINT:
+                // draw the volume/brightness setting hint
+                GFX_blitHardwareHints(screen, state.show_brightness_setting);
+                break;
+            case BOTTOM_LEFT_SLEEP:
+                GFX_blitButtonGroup((char *[]){BTN_SLEEP == BTN_POWER ? "POWER" : "MENU", "SLEEP", NULL}, 0, screen, 0);
+                break;
+            case BOTTOM_LEFT_NONE:
+                break;
             }
 
             // your draw logic goes here

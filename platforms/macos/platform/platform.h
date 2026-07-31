@@ -60,8 +60,8 @@
 #define CODE_MENU		44
 #define CODE_POWER		42
 
-#define CODE_PLUS		CODE_NA
-#define CODE_MINUS		CODE_NA
+#define CODE_PLUS		46	// = key for Plus (volume/brightness up)
+#define CODE_MINUS		45	// - key for Minus (volume/brightness down)
 
 ///////////////////////////////
 						// HATS

@@ -21,14 +21,28 @@
 void InitSettings(void){}
 void QuitSettings(void){}
 
-int GetBrightness(void) { return 0; }
-int GetVolume(void) { return 0; }
+// there is no keymon on macOS to drive these, so the shim stores the values
+// itself (initialized to mid-range) purely so the on-screen settings overlay
+// renders a visible level while developing/verifying
+static int macos_brightness = 5; // 0-10
+static int macos_volume = 10;    // 0-20
+
+int GetBrightness(void) { return macos_brightness; }
+int GetVolume(void) { return macos_volume; }
 
 void SetRawBrightness(int value) {}
 void SetRawVolume(int value){}
 
-void SetBrightness(int value) {}
-void SetVolume(int value) {}
+void SetBrightness(int value) {
+	if (value < BRIGHTNESS_MIN) value = BRIGHTNESS_MIN;
+	if (value > BRIGHTNESS_MAX) value = BRIGHTNESS_MAX;
+	macos_brightness = value;
+}
+void SetVolume(int value) {
+	if (value < VOLUME_MIN) value = VOLUME_MIN;
+	if (value > VOLUME_MAX) value = VOLUME_MAX;
+	macos_volume = value;
+}
 
 int GetJack(void) { return 0; }
 void SetJack(int value) {}
