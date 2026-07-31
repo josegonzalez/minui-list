@@ -2,16 +2,40 @@ CURRENT_WORKING_DIR = $(shell pwd)
 
 PLATFORM ?= tg5040
 MINUI_VERSION ?= v20251023-0
-NEXTUI_VERSION ?= v6.9.0
+NEXTUI_VERSION ?= v6.14.0
+MY355_NEXTUI_VERSION ?= my355-latest
 H700_VERSION ?= h700-rc3
 
+# WORKSPACE is the upstream workspace directory name and the runtime device id
+# baked into the binary via -DPLATFORM. It matches PLATFORM for every platform
+# except the NextUI variants, whose PLATFORM carries a "-nextui" suffix (e.g.
+# tg5040-nextui) while their upstream workspace and on-device id remain the bare
+# device (e.g. tg5040), so that .system/.userdata paths resolve on the device.
+WORKSPACE = $(PLATFORM)
+# IS_NEXTUI is set for platforms that build against a NextUI SDK/toolchain.
+IS_NEXTUI =
+
 # Determine upstream repository based on platform
-ifeq ($(PLATFORM),tg5050)
+ifeq ($(PLATFORM),tg5040-nextui)
   UPSTREAM_REPO = https://github.com/loveRetro/NextUI
   UPSTREAM_VERSION = $(NEXTUI_VERSION)
-else ifeq ($(PLATFORM),h700)
+  WORKSPACE = tg5040
+  IS_NEXTUI = 1
+else ifeq ($(PLATFORM),my355-nextui)
+  UPSTREAM_REPO = https://github.com/loveRetro/NextUI
+  UPSTREAM_VERSION = $(MY355_NEXTUI_VERSION)
+  WORKSPACE = my355
+  IS_NEXTUI = 1
+else ifeq ($(PLATFORM),tg5050-nextui)
+  UPSTREAM_REPO = https://github.com/loveRetro/NextUI
+  UPSTREAM_VERSION = $(NEXTUI_VERSION)
+  WORKSPACE = tg5050
+  IS_NEXTUI = 1
+else ifeq ($(PLATFORM),h700-nextui)
   UPSTREAM_REPO = https://github.com/pvaibhav/NextUI
   UPSTREAM_VERSION = $(H700_VERSION)
+  WORKSPACE = h700
+  IS_NEXTUI = 1
 else
   UPSTREAM_REPO = https://github.com/shauninman/MinUI
   UPSTREAM_VERSION = $(MINUI_VERSION)
@@ -29,15 +53,15 @@ ifeq ($(PLATFORM),macos)
 else
   ifeq (,$(CROSS_COMPILE))
     # the host-only targets below do not cross-compile, so they don't need a toolchain
-    ifeq (,$(filter test clean,$(MAKECMDGOALS)))
+    ifeq (,$(filter test clean print-%,$(MAKECMDGOALS)))
       $(error missing CROSS_COMPILE for this toolchain)
     endif
   endif
   CC = $(CROSS_COMPILE)gcc
   PREFIX = $(CURRENT_WORKING_DIR)/platform/$(PLATFORM)
-  PLATFORM_DIR = minui/workspace/$(PLATFORM)/platform
+  PLATFORM_DIR = minui/workspace/$(WORKSPACE)/platform
   LD_LIBRARY_PATH = $(CURRENT_WORKING_DIR)/platform/$(PLATFORM)/lib/
-  -include minui/workspace/$(PLATFORM)/platform/makefile.env
+  -include minui/workspace/$(WORKSPACE)/platform/makefile.env
 endif
 SDL?=SDL
 
@@ -49,27 +73,30 @@ ifeq ($(PLATFORM),macos)
   INCDIR = -I. -Iplatforms/macos/include/ -Iminui/workspace/all/common/ -Iplatforms/macos/platform/ -Iinclude/ $(SDL_CFLAGS)
   SOURCE = $(TARGET).c list_filter.c list_hint.c list_image.c list_keyboard.c list_nav.c list_scroll.c minui/workspace/all/common/scaler.c minui/workspace/all/common/utils.c minui/workspace/all/common/api.c platforms/macos/platform/platform.c include/parson/parson.c
   CFLAGS = $(ARCH) -fomit-frame-pointer
-  CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) -O3 -std=gnu99 -Wno-tautological-constant-out-of-range-compare -Wno-asm-operand-widths
+  CFLAGS += $(INCDIR) -DPLATFORM=\"$(WORKSPACE)\" -DUSE_$(SDL) -O3 -std=gnu99 -Wno-tautological-constant-out-of-range-compare -Wno-asm-operand-widths
   FLAGS = $(LIBS) $(SDL_LIBS) -lpthread -lm -lz
 else
-  INCDIR = -I. -Iplatform/$(PLATFORM)/include/ -Iminui/workspace/all/common/ -Iminui/workspace/$(PLATFORM)/platform/ -Iinclude/
-  SOURCE = $(TARGET).c list_filter.c list_hint.c list_image.c list_keyboard.c list_nav.c list_scroll.c minui/workspace/all/common/scaler.c minui/workspace/all/common/utils.c minui/workspace/all/common/api.c minui/workspace/$(PLATFORM)/platform/platform.c include/parson/parson.c
+  INCDIR = -I. -Iplatform/$(PLATFORM)/include/ -Iminui/workspace/all/common/ -Iminui/workspace/$(WORKSPACE)/platform/ -Iinclude/
+  SOURCE = $(TARGET).c list_filter.c list_hint.c list_image.c list_keyboard.c list_nav.c list_scroll.c minui/workspace/all/common/scaler.c minui/workspace/all/common/utils.c minui/workspace/all/common/api.c minui/workspace/$(WORKSPACE)/platform/platform.c include/parson/parson.c
   FLAGS = -L$(LD_LIBRARY_PATH) -ldl -lmsettings $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
-  # tg5050/h700 use the NextUI toolchain which installs libmsettings to /opt/nextui
-  ifneq (,$(filter $(PLATFORM),tg5050 h700))
+  # NextUI toolchains install libmsettings and the GLES stack to /opt/nextui
+  ifneq (,$(IS_NEXTUI))
     INCDIR += -I/opt/nextui/include
     # tg5050's GLESv2 is backed by a separate mali blob that must be linked
-    # explicitly; h700 links libGLESv2 directly and ships no standalone libmali
+    # explicitly; the other NextUI toolchains link libGLESv2 directly and ship
+    # no standalone libmali. tg5040 needs no libsamplerate at its pinned version.
     NEXTUI_GL_LIBS = -lGLESv2 -lsamplerate
-    ifeq ($(PLATFORM),tg5050)
+    ifeq ($(PLATFORM),tg5050-nextui)
       NEXTUI_GL_LIBS = -lGLESv2 -lmali -lsamplerate
+    else ifeq ($(PLATFORM),tg5040-nextui)
+      NEXTUI_GL_LIBS = -lGLESv2
     endif
     FLAGS += -L/opt/nextui/lib $(NEXTUI_GL_LIBS)
-    CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DPLATFORM_NEXTUI
+    CFLAGS += $(INCDIR) -DPLATFORM=\"$(WORKSPACE)\" -DPLATFORM_NEXTUI
     SOURCE += minui/workspace/all/common/config.c
   else
     CFLAGS = $(ARCH) -fomit-frame-pointer
-    CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) -Ofast -std=gnu99
+    CFLAGS += $(INCDIR) -DPLATFORM=\"$(WORKSPACE)\" -DUSE_$(SDL) -Ofast -std=gnu99
   endif
 endif
 
@@ -95,6 +122,11 @@ endif
 
 clean:
 	rm -rf $(PRODUCT)-$(PLATFORM)
+
+# Print the value of any make variable, e.g. `make print-UPSTREAM_REPO PLATFORM=tg5040-nextui`
+# Used by tests/makefile.bats to assert the per-platform build wiring.
+print-%:
+	@echo '$*=$($*)'
 
 # Build and run the pure-C unit tests with the host compiler (no SDL required)
 TEST_CC ?= cc
@@ -136,7 +168,7 @@ platform/$(PLATFORM)/include:
 # PREFIX is the path to the workspace (not used for macOS)
 ifneq ($(PLATFORM),macos)
 $(PREFIX)/include/msettings.h: platform/$(PLATFORM)/lib platform/$(PLATFORM)/include
-	cd $(CURRENT_WORKING_DIR)/minui/workspace/$(PLATFORM)/libmsettings && make
+	cd $(CURRENT_WORKING_DIR)/minui/workspace/$(WORKSPACE)/libmsettings && make
 endif
 
 include/parson:
