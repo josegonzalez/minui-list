@@ -46,9 +46,11 @@ mk() { # <VAR> <PLATFORM>
     [[ "$output" == *'minui/workspace/all/common/config.c'* ]]
 }
 
-@test "tg5040-nextui links GLESv2 only (no mali, no samplerate)" {
+@test "tg5040-nextui links GLESv2 and samplerate (no mali)" {
     mk NEXTUI_GL_LIBS tg5040-nextui
-    [ "$output" = "NEXTUI_GL_LIBS=-lGLESv2" ]
+    [[ "$output" == *'-lGLESv2'* ]]
+    [[ "$output" == *'-lsamplerate'* ]]
+    [[ "$output" != *'-lmali'* ]]
 }
 
 @test "tg5040-nextui produces the -nextui artifact id" {
@@ -73,11 +75,10 @@ mk() { # <VAR> <PLATFORM>
     [[ "$output" == *'-DPLATFORM_NEXTUI'* ]]
 }
 
-@test "my355-nextui links samplerate but not mali" {
+@test "my355-nextui links the mali blob and samplerate" {
     mk NEXTUI_GL_LIBS my355-nextui
-    [[ "$output" == *'-lGLESv2'* ]]
+    [[ "$output" == *'-lmali'* ]]
     [[ "$output" == *'-lsamplerate'* ]]
-    [[ "$output" != *'-lmali'* ]]
 }
 
 # tg5050-nextui: NextUI-only device that needs the standalone mali blob

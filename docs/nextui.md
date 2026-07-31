@@ -28,11 +28,10 @@ The only source-level NextUI difference is in `minui-list.c`: under `-DPLATFORM_
 
 ### GLES and audio libraries
 
-NextUI toolchains install `libmsettings` and the GLES stack under `/opt/nextui`. The linked libraries differ per device (`NEXTUI_GL_LIBS`):
+NextUI toolchains install `libmsettings` and the GLES stack under `/opt/nextui`. Every NextUI target links `libsamplerate`, which `api.c` uses to resample audio. The linked libraries differ per device (`NEXTUI_GL_LIBS`):
 
-- `tg5040-nextui`: `-lGLESv2`
-- `my355-nextui` and `h700-nextui`: `-lGLESv2 -lsamplerate`
-- `tg5050-nextui`: `-lGLESv2 -lmali -lsamplerate` (its `libGLESv2` is backed by a standalone mali blob that must be linked explicitly)
+- `tg5040-nextui` and `h700-nextui`: `-lGLESv2 -lsamplerate`
+- `tg5050-nextui` and `my355-nextui`: `-lGLESv2 -lmali -lsamplerate` (their `libGLESv2` is a stub backed by a standalone mali blob that must be linked explicitly)
 
 ## Building
 

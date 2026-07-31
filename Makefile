@@ -79,17 +79,16 @@ else
   INCDIR = -I. -Iplatform/$(PLATFORM)/include/ -Iminui/workspace/all/common/ -Iminui/workspace/$(WORKSPACE)/platform/ -Iinclude/
   SOURCE = $(TARGET).c list_filter.c list_hint.c list_image.c list_keyboard.c list_nav.c list_scroll.c minui/workspace/all/common/scaler.c minui/workspace/all/common/utils.c minui/workspace/all/common/api.c minui/workspace/$(WORKSPACE)/platform/platform.c include/parson/parson.c
   FLAGS = -L$(LD_LIBRARY_PATH) -ldl -lmsettings $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
-  # NextUI toolchains install libmsettings and the GLES stack to /opt/nextui
+  # NextUI toolchains install libmsettings and the GLES stack to /opt/nextui.
+  # api.c resamples audio through libsamplerate on every NextUI target. tg5050
+  # and my355 additionally need the standalone mali blob linked explicitly
+  # because their libGLESv2 is a stub that pulls symbols from libmali; tg5040
+  # and h700 resolve libGLESv2 symbols directly.
   ifneq (,$(IS_NEXTUI))
     INCDIR += -I/opt/nextui/include
-    # tg5050's GLESv2 is backed by a separate mali blob that must be linked
-    # explicitly; the other NextUI toolchains link libGLESv2 directly and ship
-    # no standalone libmali. tg5040 needs no libsamplerate at its pinned version.
     NEXTUI_GL_LIBS = -lGLESv2 -lsamplerate
-    ifeq ($(PLATFORM),tg5050-nextui)
+    ifneq (,$(filter $(PLATFORM),tg5050-nextui my355-nextui))
       NEXTUI_GL_LIBS = -lGLESv2 -lmali -lsamplerate
-    else ifeq ($(PLATFORM),tg5040-nextui)
-      NEXTUI_GL_LIBS = -lGLESv2
     endif
     FLAGS += -L/opt/nextui/lib $(NEXTUI_GL_LIBS)
     CFLAGS += $(INCDIR) -DPLATFORM=\"$(WORKSPACE)\" -DPLATFORM_NEXTUI
