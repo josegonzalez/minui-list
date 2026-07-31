@@ -161,6 +161,18 @@ minui-list --file list.json --selected 2
 # L1 jumps to the previous letter group, R1 jumps to the next
 # both wrap around at the ends of the list
 minui-list --file list.json --alphabetic-scroll
+
+# autoscroll the selected item's name when it is too long to fit
+# by default the name is truncated with an ellipsis ("...")
+# the supported values are "false" (default), "wrap", and "pong"
+# "wrap" is a continuous looping marquee; "pong" scrolls to the end,
+# pauses, then scrolls back to the start
+# only the currently selected item scrolls; other long items keep the ellipsis
+minui-list --file list.json --scroll-method wrap
+
+# the scroll method can also be set via the top-level "scroll_method" JSON
+# property; when present in the JSON it takes precedence over the flag
+minui-list --file list.json --scroll-method pong
 ```
 
 To create a list of items from newline-delimited strings, you can use jq:
@@ -242,6 +254,7 @@ Top-level properties (on the root object, not on individual items):
 
 - selected: (optional, type: `integer`, default: `0`) the index of the initially selected item. Can be overridden by the `--selected` CLI flag.
 - alphabetic_scroll: (optional, type: `boolean`, default: `false`) enables L1/R1 alphabetical scrolling. When enabled, items are automatically sorted alphabetically and L1/R1 buttons jump between letter groups, wrapping around at the ends of the list. Headers and unselectable items are skipped.
+- scroll_method: (optional, type: `string`, default: `false`) how to autoscroll the selected item's name when it is too long to fit. One of `false` (truncate with an ellipsis), `wrap` (continuous looping marquee), or `pong` (scroll to the end, pause, then scroll back). Only the currently selected, selectable, non-color item scrolls; other long items keep the ellipsis, and a scrolling item is always rendered left-aligned. When present, this property takes precedence over the `--scroll-method` CLI flag.
 
 Item properties:
 
