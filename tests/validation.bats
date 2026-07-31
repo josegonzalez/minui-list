@@ -186,3 +186,48 @@ setup() {
     [[ "$output" == *"is not an object"* ]]
     [[ "$output" != *"No selectable items found"* ]]
 }
+
+# issue 13 - per-item right-hand-side images
+#
+# images live under "features.images" (a resolution -> path map, with the single
+# image expressed as features.images.default). invalid shapes must fail
+# validation (which runs before display init) rather than reach the renderer.
+
+@test "non-object features.images is rejected" {
+    JSONFILE="$(mktemp "${BATS_TEST_TMPDIR:-/tmp}/minui-list-json.XXXXXX")"
+    printf '{"items":[{"name":"Apple","features":{"images":"nope"}}]}' > "$JSONFILE"
+    run "$BIN" --file "$JSONFILE" --format json
+    [ "$status" -eq 1 ]
+    [ "$status" -ne 139 ]
+    [[ "$output" == *"features.images must be an object"* ]]
+}
+
+@test "non-string features.images entry is rejected" {
+    JSONFILE="$(mktemp "${BATS_TEST_TMPDIR:-/tmp}/minui-list-json.XXXXXX")"
+    printf '{"items":[{"name":"Apple","features":{"images":{"default":123}}}]}' > "$JSONFILE"
+    run "$BIN" --file "$JSONFILE" --format json
+    [ "$status" -eq 1 ]
+    [ "$status" -ne 139 ]
+    [[ "$output" == *"features.images entry 'default' must be a string"* ]]
+}
+
+@test "--screen-resolution is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --screen-resolution 1280x720
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"Invalid screen resolution"* ]]
+    [[ "$output" != *"unrecognized option"* ]]
+}
+
+@test "invalid --screen-resolution is rejected" {
+    run "$BIN" --file "$TESTFILE" --screen-resolution 1280x
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid screen resolution provided"* ]]
+}
+
+@test "--fallback-image is accepted" {
+    run "$BIN" --file "$TESTFILE" --format xml --fallback-image /path/to/fallback.png
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid format provided"* ]]
+    [[ "$output" != *"unrecognized option"* ]]
+}
