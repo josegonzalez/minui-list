@@ -9,7 +9,7 @@ Some devices run NextUI, a fork of MinUI, instead of (or in addition to) MinUI. 
 | `tg5040-nextui` | NextUI   | `loveRetro/NextUI`         | `v6.14.0` (`NEXTUI_VERSION`)          | `tg5040`      | `savant/minui-toolchain:tg5040-nextui` |
 | `my355-nextui`  | NextUI   | `loveRetro/NextUI`         | `my355-latest` (`MY355_NEXTUI_VERSION`) | `my355`     | `savant/minui-toolchain:my355-nextui`  |
 | `tg5050-nextui` | NextUI   | `loveRetro/NextUI`         | `v6.14.0` (`NEXTUI_VERSION`)          | `tg5050`      | `savant/minui-toolchain:tg5050-nextui` |
-| `h700-nextui`   | NextUI   | `pvaibhav/NextUI`          | `h700-rc3` (`H700_VERSION`)           | `h700`        | `savant/minui-toolchain:h700-nextui`   |
+| `h700-nextui`   | NextUI   | `pvaibhav/NextUI`          | `h700-rc9` (`H700_VERSION`)           | `h700`        | `savant/minui-toolchain:h700-nextui`   |
 
 `tg5040` and `my355` also have MinUI builds (`minui-list-tg5040`, `minui-list-my355`) since those devices run both firmwares. `tg5050` and `h700` are NextUI-only.
 
@@ -76,3 +76,15 @@ bats tests/makefile.bats
 ```
 
 The CI matrix builds every NextUI binary in its `savant/minui-toolchain:<device>-nextui` container, which is the integration test for the full compile and link.
+
+## Keeping the pins current
+
+The upstream trees are pinned by tag, so a firmware release that changes the SDK ABI does not reach the build until the pin moves. That is a real failure mode: `h700-rc9` turned the whole `libmsettings` mute and turbo API into header-only inline stubs, so a binary built against `h700-rc3` still linked but died on device with `undefined symbol: GetMute`. `-lmsettings` is a shared library, so those symbols are resolved against the firmware's copy at load time, and nothing in the build can see the mismatch.
+
+`scripts/check-upstream-pins.sh` compares each pin against the latest release of its upstream and exits non-zero if any differs:
+
+```bash
+bash scripts/check-upstream-pins.sh
+```
+
+It covers `MINUI_VERSION`, `NEXTUI_VERSION`, and `H700_VERSION`. `MY355_NEXTUI_VERSION` is skipped because it tracks a branch rather than a release. The `upstream-pins` workflow runs the same script weekly and keeps a single tracking issue up to date, closing it once every pin matches again.

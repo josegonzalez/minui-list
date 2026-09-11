@@ -1,0 +1,74 @@
+---
+name: "upstream-pins"
+
+# Reports when a pinned upstream version no longer matches its upstream's
+# latest release. Deliberately not part of pull request CI: a drifted pin is
+# something to schedule work for, not a reason to block an unrelated change.
+
+# yamllint disable-line rule:truthy
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  ISSUE_TITLE: "Upstream version pins have drifted"
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check upstream pins
+        id: check
+        run: |
+          status=0
+          bash scripts/check-upstream-pins.sh > report.txt || status=$?
+          cat report.txt
+          echo "status=$status" >> $GITHUB_OUTPUT
+
+      - name: Find the tracking issue
+        id: issue
+        run: |
+          jq_filter="map(select(.title == \"$ISSUE_TITLE\")) | .[0].number // empty"
+          number="$(gh issue list --state open --search "$ISSUE_TITLE in:title" --json number,title --jq "$jq_filter")"
+          echo "number=$number" >> $GITHUB_OUTPUT
+
+      - name: Build the issue body
+        if: steps.check.outputs.status != '0'
+        run: |
+          {
+            echo "The Makefile pins an upstream tree per platform. One or more pins no longer match the latest upstream release."
+            echo
+            echo "A stale pin still builds and links, but the binary can fail to load on newer firmware when that firmware drops a symbol the upstream \`api.c\` calls."
+            echo
+            echo '```'
+            cat report.txt
+            echo '```'
+            echo
+            echo "Reported by \`scripts/check-upstream-pins.sh\`, run from the \`upstream-pins\` workflow."
+          } > body.md
+
+      - name: Open or update the tracking issue
+        if: steps.check.outputs.status != '0'
+        run: |
+          if [ -n "${{ steps.issue.outputs.number }}" ]; then
+            gh issue edit "${{ steps.issue.outputs.number }}" --body-file body.md
+          else
+            gh issue create --title "$ISSUE_TITLE" --body-file body.md
+          fi
+
+      - name: Close the tracking issue once every pin matches
+        if: steps.check.outputs.status == '0' && steps.issue.outputs.number != ''
+        run: |
+          gh issue close "${{ steps.issue.outputs.number }}" \
+            --comment "Every upstream pin now matches its latest upstream release."

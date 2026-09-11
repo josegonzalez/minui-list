@@ -4,7 +4,7 @@ PLATFORM ?= tg5040
 MINUI_VERSION ?= v20251023-0
 NEXTUI_VERSION ?= v6.14.0
 MY355_NEXTUI_VERSION ?= my355-latest
-H700_VERSION ?= h700-rc3
+H700_VERSION ?= h700-rc9
 
 # WORKSPACE is the upstream workspace directory name and the runtime device id
 # baked into the binary via -DPLATFORM. It matches PLATFORM for every platform
