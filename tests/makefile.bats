@@ -115,13 +115,29 @@ mk() { # <VAR> <PLATFORM>
 
 # regression: a plain MinUI platform is untouched by the NextUI wiring
 
-@test "tg5040 (MinUI) uses the shauninman upstream and is not a NextUI build" {
+@test "tg5040 (MinUI) uses the shauninman upstream at the pinned tag and is not a NextUI build" {
     mk UPSTREAM_REPO tg5040
     [ "$output" = "UPSTREAM_REPO=https://github.com/shauninman/MinUI" ]
+    mk UPSTREAM_VERSION tg5040
+    [ "$output" = "UPSTREAM_VERSION=v20251127-1" ]
     mk IS_NEXTUI tg5040
     [ "$output" = "IS_NEXTUI=" ]
     mk WORKSPACE tg5040
     [ "$output" = "WORKSPACE=tg5040" ]
+}
+
+# The pin above is asserted literally so that bumping it has to touch this file.
+# This one asserts the wiring instead: the Makefile's fallback branch hands the
+# same MINUI_VERSION to every non-NextUI platform, not just tg5040.
+@test "the MinUI platforms all resolve UPSTREAM_VERSION to the MINUI_VERSION pin" {
+    mk MINUI_VERSION tg5040
+    pin="${output#MINUI_VERSION=}"
+    [ -n "$pin" ]
+
+    for platform in tg5040 rg35xxplus zero28; do
+        mk UPSTREAM_VERSION "$platform"
+        [ "$output" = "UPSTREAM_VERSION=$pin" ]
+    done
 }
 
 @test "tg5040 (MinUI) defines neither PLATFORM_NEXTUI nor the config source" {
