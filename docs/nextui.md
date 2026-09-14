@@ -79,12 +79,4 @@ The CI matrix builds every NextUI binary in its `savant/minui-toolchain:<device>
 
 ## Keeping the pins current
 
-The upstream trees are pinned by tag, so a firmware release that changes the SDK ABI does not reach the build until the pin moves. That is a real failure mode: `h700-rc9` turned the whole `libmsettings` mute and turbo API into header-only inline stubs, so a binary built against `h700-rc3` still linked but died on device with `undefined symbol: GetMute`. `-lmsettings` is a shared library, so those symbols are resolved against the firmware's copy at load time, and nothing in the build can see the mismatch.
-
-`scripts/check-upstream-pins.sh` compares each pin against the latest release of its upstream and exits non-zero if any differs:
-
-```bash
-bash scripts/check-upstream-pins.sh
-```
-
-It covers `MINUI_VERSION`, `NEXTUI_VERSION`, and `H700_VERSION`. `MY355_NEXTUI_VERSION` is skipped because it tracks a branch rather than a release. The `upstream-pins` workflow runs the same script weekly and keeps a single tracking issue up to date, closing it once every pin matches again.
+The NextUI pins (`NEXTUI_VERSION`, `MY355_NEXTUI_VERSION`, `H700_VERSION`) are documented alongside the MinUI pin in [upstream-pins.md](upstream-pins.md), which covers why a stale pin still builds but fails on device, how `scripts/check-upstream-pins.sh` reports drift, and how to bump one.
