@@ -102,7 +102,7 @@ mk() { # <VAR> <PLATFORM>
     mk UPSTREAM_REPO h700-nextui
     [ "$output" = "UPSTREAM_REPO=https://github.com/pvaibhav/NextUI" ]
     mk UPSTREAM_VERSION h700-nextui
-    [ "$output" = "UPSTREAM_VERSION=h700-rc9" ]
+    [ "$output" = "UPSTREAM_VERSION=h700-rc10" ]
     mk WORKSPACE h700-nextui
     [ "$output" = "WORKSPACE=h700" ]
 }
