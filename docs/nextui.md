@@ -9,7 +9,7 @@ Some devices run NextUI, a fork of MinUI, instead of (or in addition to) MinUI. 
 | `tg5040-nextui` | NextUI   | `loveRetro/NextUI`         | `v6.14.0` (`NEXTUI_VERSION`)          | `tg5040`      | `savant/minui-toolchain:tg5040-nextui` |
 | `my355-nextui`  | NextUI   | `loveRetro/NextUI`         | `my355-latest` (`MY355_NEXTUI_VERSION`) | `my355`     | `savant/minui-toolchain:my355-nextui`  |
 | `tg5050-nextui` | NextUI   | `loveRetro/NextUI`         | `v6.14.0` (`NEXTUI_VERSION`)          | `tg5050`      | `savant/minui-toolchain:tg5050-nextui` |
-| `h700-nextui`   | NextUI   | `pvaibhav/NextUI`          | `h700-rc9` (`H700_VERSION`)           | `h700`        | `savant/minui-toolchain:h700-nextui`   |
+| `h700-nextui`   | NextUI   | `pvaibhav/NextUI`          | `h700-rc10` (`H700_VERSION`)          | `h700`        | `savant/minui-toolchain:h700-nextui`   |
 
 `tg5040` and `my355` also have MinUI builds (`minui-list-tg5040`, `minui-list-my355`) since those devices run both firmwares. `tg5050` and `h700` are NextUI-only.
 
