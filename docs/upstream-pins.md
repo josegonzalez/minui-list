@@ -26,8 +26,9 @@ in the build can see the mismatch.
 
 ## Checking the pins
 
-`scripts/check-upstream-pins.sh` compares each pin against the latest release of its upstream and
-exits non-zero if any differs:
+`scripts/check-upstream-pins.sh` compares each pin against the newest release of its upstream and
+exits non-zero if any differs. Prereleases count as releases (drafts do not), because the h700 fork
+publishes its firmware as prereleases, so GitHub's "latest release" can lag behind what devices run:
 
 ```bash
 bash scripts/check-upstream-pins.sh
@@ -53,6 +54,10 @@ date, closing it once every pin matches again.
 
 2. Watch in particular for a symbol disappearing from `libmsettings`. That is the `GetMute` break
    above, and neither the compile nor the link will catch it.
+   If the release notes mention button or SDL input changes, check the device's `platform.c` input
+   path too. `h700-rc11` renumbered the built-in h700 buttons for SDL, which does not reach this
+   repo because the h700 `platform.c` reads the built-in controls through evdev (see
+   [Input on h700](nextui.md#input-on-h700)).
 3. Bump the variable in the Makefile.
 4. Update the literal tag in `tests/makefile.bats` - the pins are asserted there so a
    bump cannot happen silently.
@@ -64,6 +69,9 @@ date, closing it once every pin matches again.
    bats tests/makefile.bats
    bash scripts/check-upstream-pins.sh
    ```
+
+   `tests/check-upstream-pins.bats` covers the script itself with a stubbed `gh`, so it runs
+   offline.
 
 7. Let CI build every platform in its toolchain container. That is the only thing that exercises the
    cross compile and link against the new tree.

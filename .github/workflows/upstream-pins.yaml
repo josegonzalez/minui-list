@@ -2,7 +2,7 @@
 name: "upstream-pins"
 
 # Reports when a pinned upstream version no longer matches its upstream's
-# latest release. Deliberately not part of pull request CI: a drifted pin is
+# newest release. Deliberately not part of pull request CI: a drifted pin is
 # something to schedule work for, not a reason to block an unrelated change.
 
 # yamllint disable-line rule:truthy
@@ -47,7 +47,7 @@ jobs:
         if: steps.check.outputs.status != '0'
         run: |
           {
-            echo "The Makefile pins an upstream tree per platform. One or more pins no longer match the latest upstream release."
+            echo "The Makefile pins an upstream tree per platform. One or more pins no longer match the newest upstream release."
             echo
             echo "A stale pin still builds and links, but the binary can fail to load on newer firmware when that firmware drops a symbol the upstream \`api.c\` calls."
             echo
@@ -71,4 +71,4 @@ jobs:
         if: steps.check.outputs.status == '0' && steps.issue.outputs.number != ''
         run: |
           gh issue close "${{ steps.issue.outputs.number }}" \
-            --comment "Every upstream pin now matches its latest upstream release."
+            --comment "Every upstream pin now matches its newest upstream release."
