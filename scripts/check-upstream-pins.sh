@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Report pinned upstream versions that no longer match their upstream's latest
+# Report pinned upstream versions that no longer match their upstream's newest
 # release.
 #
 # The Makefile pins each upstream tree it clones (see the version variables at
@@ -9,6 +9,10 @@
 # fails to load on the newer firmware, e.g. the h700-rc9 removal of GetMute from
 # libmsettings. Nothing in the build catches that, so this check surfaces a
 # stale pin instead.
+#
+# "Newest" includes prereleases (but not drafts): the h700 fork publishes its
+# firmware as prereleases, so GitHub's "latest release" can lag behind what is
+# actually shipped to devices.
 #
 # Tags are not comparable as versions across these upstreams (h700-rc9,
 # v6.14.0, v20251127-1), so this is a plain string comparison and reports
@@ -34,8 +38,8 @@ pinned_version() { # <VAR>
     make --no-print-directory -C "$REPO_ROOT" "print-$1" | cut -d= -f2-
 }
 
-latest_release() { # <owner/repo>
-    gh release view --repo "$1" --json tagName -q .tagName
+newest_release() { # <owner/repo>
+    gh release list --repo "$1" --exclude-drafts --limit 1 --json tagName -q '.[0].tagName'
 }
 
 while read -r var repo; do
@@ -48,17 +52,17 @@ while read -r var repo; do
         continue
     fi
 
-    latest="$(latest_release "$repo")"
-    if [ -z "$latest" ]; then
-        echo "ERROR   $var: could not read the latest release of $repo"
+    newest="$(newest_release "$repo")"
+    if [ -z "$newest" ]; then
+        echo "ERROR   $var: could not read the newest release of $repo"
         stale=1
         continue
     fi
 
-    if [ "$pinned" = "$latest" ]; then
-        echo "ok      $var: $pinned matches the latest $repo release"
+    if [ "$pinned" = "$newest" ]; then
+        echo "ok      $var: $pinned matches the newest $repo release"
     else
-        echo "DIFFERS $var: pinned $pinned, latest $repo release is $latest"
+        echo "DIFFERS $var: pinned $pinned, newest $repo release is $newest"
         stale=1
     fi
 done <<< "$PINS"
