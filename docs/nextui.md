@@ -6,14 +6,16 @@ Some devices run NextUI, a fork of MinUI, instead of (or in addition to) MinUI. 
 
 | Platform id     | Firmware | Upstream repo      | Version / ref (Makefile var)          | Workspace dir | Toolchain image                        |
 |-----------------|----------|--------------------|---------------------------------------|---------------|----------------------------------------|
-| `tg5040-nextui` | NextUI   | `loveRetro/NextUI` | `v6.14.0` (`NEXTUI_VERSION`)          | `tg5040`      | `savant/minui-toolchain:tg5040-nextui` |
+| `tg5040-nextui` | NextUI   | `loveRetro/NextUI` | `v6.15.0` (`NEXTUI_VERSION`)          | `tg5040`      | `savant/minui-toolchain:tg5040-nextui` |
 | `my355-nextui`  | NextUI   | `apommel/NextUI`   | `my355-rc.6` (`MY355_NEXTUI_VERSION`) | `my355`       | `savant/minui-toolchain:my355-nextui`  |
-| `tg5050-nextui` | NextUI   | `loveRetro/NextUI` | `v6.14.0` (`NEXTUI_VERSION`)          | `tg5050`      | `savant/minui-toolchain:tg5050-nextui` |
-| `h700-nextui`   | NextUI   | `pvaibhav/NextUI`  | `h700-rc11` (`H700_VERSION`)          | `h700`        | `savant/minui-toolchain:h700-nextui`   |
+| `tg5050-nextui` | NextUI   | `loveRetro/NextUI` | `v6.15.0` (`NEXTUI_VERSION`)          | `tg5050`      | `savant/minui-toolchain:tg5050-nextui` |
+| `h700-nextui`   | NextUI   | `loveRetro/NextUI` | `v6.15.0` (`NEXTUI_VERSION`)          | `h700`        | `savant/minui-toolchain:h700-nextui`   |
 
 `tg5040` and `my355` also have MinUI builds (`minui-list-tg5040`, `minui-list-my355`) since those devices run both firmwares. `tg5050` and `h700` are NextUI-only.
 
 The `my355` workspace comes from the `apommel/NextUI` fork, which publishes Miyoo Flip firmware as prereleases on its own tag scheme, so it uses its own version variable. That fork carries NextUI's 8-digit (alpha-channel) theme colors, which the older `my355-latest` branch of `loveRetro/NextUI` lacked: a binary built against that branch rewrote `minuisettings.txt` in the old format on exit and broke the theme on an up-to-date device.
+
+H700 support was merged into `loveRetro/NextUI` in `v6.15.0`, so `h700-nextui` shares `NEXTUI_VERSION` with the TrimUI devices. Earlier builds used the `pvaibhav/NextUI` fork.
 
 ## How the build is wired
 
@@ -40,7 +42,7 @@ NextUI toolchains install `libmsettings` and the GLES stack under `/opt/nextui`.
 
 `minui-list` never reads SDL joystick events itself. All button handling goes through the SDK `PAD_*` API (`PAD_poll`, `PAD_justReleased`, and so on), which calls the device's `PLAT_pollInput` in the upstream `platform.c`. On h700 that reads the built-in controls through raw evdev codes and deliberately skips the built-in pad (`ANBERNIC-keys`) when opening SDL joysticks. SDL joysticks are only opened for external pads, which use the `JOY_*` mapping from the upstream `platform.h`.
 
-`h700-rc11` changed the SDL button numbers of the built-in controls to match the TrimUI layout. Because the built-in pad never reaches `minui-list` through SDL, that change does not affect it, no h700-specific remapping is needed, and paks do not need `SDL_JOYSTICK_H700_FIXED_LAYOUT=0` in their `launch.sh` for it.
+NextUI's h700 platform (first in `h700-rc11`) changed the SDL button numbers of the built-in controls to match the TrimUI layout. Because the built-in pad never reaches `minui-list` through SDL, that change does not affect it, no h700-specific remapping is needed, and paks do not need `SDL_JOYSTICK_H700_FIXED_LAYOUT=0` in their `launch.sh` for it.
 
 ## Theming
 
@@ -85,4 +87,4 @@ The CI matrix builds every NextUI binary in its `savant/minui-toolchain:<device>
 
 ## Keeping the pins current
 
-The NextUI pins (`NEXTUI_VERSION`, `MY355_NEXTUI_VERSION`, `H700_VERSION`) are documented alongside the MinUI pin in [upstream-pins.md](upstream-pins.md), which covers why a stale pin still builds but fails on device, how `scripts/check-upstream-pins.sh` reports drift, and how to bump one.
+The NextUI pins (`NEXTUI_VERSION`, `MY355_NEXTUI_VERSION`) are documented alongside the MinUI pin in [upstream-pins.md](upstream-pins.md), which covers why a stale pin still builds but fails on device, how `scripts/check-upstream-pins.sh` reports drift, and how to bump one.

@@ -23,7 +23,7 @@ mk() { # <VAR> <PLATFORM>
     mk UPSTREAM_REPO tg5040-nextui
     [ "$output" = "UPSTREAM_REPO=https://github.com/loveRetro/NextUI" ]
     mk UPSTREAM_VERSION tg5040-nextui
-    [ "$output" = "UPSTREAM_VERSION=v6.14.0" ]
+    [ "$output" = "UPSTREAM_VERSION=v6.15.0" ]
 }
 
 @test "tg5040-nextui builds the bare tg5040 workspace and is flagged NextUI" {
@@ -83,9 +83,11 @@ mk() { # <VAR> <PLATFORM>
 
 # tg5050-nextui: NextUI-only device that needs the standalone mali blob
 
-@test "tg5050-nextui uses loveRetro NextUI and the tg5050 workspace" {
+@test "tg5050-nextui uses loveRetro NextUI at the pinned tag and the tg5050 workspace" {
     mk UPSTREAM_REPO tg5050-nextui
     [ "$output" = "UPSTREAM_REPO=https://github.com/loveRetro/NextUI" ]
+    mk UPSTREAM_VERSION tg5050-nextui
+    [ "$output" = "UPSTREAM_VERSION=v6.15.0" ]
     mk WORKSPACE tg5050-nextui
     [ "$output" = "WORKSPACE=tg5050" ]
 }
@@ -96,13 +98,13 @@ mk() { # <VAR> <PLATFORM>
     [[ "$output" == *'-lsamplerate'* ]]
 }
 
-# h700-nextui: NextUI-only device sourced from the pvaibhav fork
+# h700-nextui: NextUI-only device, merged into loveRetro NextUI in v6.15.0
 
-@test "h700-nextui uses the pvaibhav NextUI fork at the h700 tag" {
+@test "h700-nextui uses the loveRetro NextUI upstream at the pinned tag" {
     mk UPSTREAM_REPO h700-nextui
-    [ "$output" = "UPSTREAM_REPO=https://github.com/pvaibhav/NextUI" ]
+    [ "$output" = "UPSTREAM_REPO=https://github.com/loveRetro/NextUI" ]
     mk UPSTREAM_VERSION h700-nextui
-    [ "$output" = "UPSTREAM_VERSION=h700-rc11" ]
+    [ "$output" = "UPSTREAM_VERSION=v6.15.0" ]
     mk WORKSPACE h700-nextui
     [ "$output" = "WORKSPACE=h700" ]
 }
@@ -111,6 +113,22 @@ mk() { # <VAR> <PLATFORM>
     mk NEXTUI_GL_LIBS h700-nextui
     [[ "$output" == *'-lsamplerate'* ]]
     [[ "$output" != *'-lmali'* ]]
+}
+
+# The pins above are asserted literally so that bumping one has to touch this
+# file. This one asserts the wiring instead: every loveRetro NextUI device shares
+# the NEXTUI_VERSION pin, so they cannot drift apart.
+@test "the loveRetro NextUI platforms all resolve UPSTREAM_VERSION to the NEXTUI_VERSION pin" {
+    mk NEXTUI_VERSION tg5040-nextui
+    pin="${output#NEXTUI_VERSION=}"
+    [ -n "$pin" ]
+
+    for platform in tg5040-nextui tg5050-nextui h700-nextui; do
+        mk UPSTREAM_REPO "$platform"
+        [ "$output" = "UPSTREAM_REPO=https://github.com/loveRetro/NextUI" ]
+        mk UPSTREAM_VERSION "$platform"
+        [ "$output" = "UPSTREAM_VERSION=$pin" ]
+    done
 }
 
 # regression: a plain MinUI platform is untouched by the NextUI wiring

@@ -2,9 +2,8 @@ CURRENT_WORKING_DIR = $(shell pwd)
 
 PLATFORM ?= tg5040
 MINUI_VERSION ?= v20251127-1
-NEXTUI_VERSION ?= v6.14.0
+NEXTUI_VERSION ?= v6.15.0
 MY355_NEXTUI_VERSION ?= my355-rc.6
-H700_VERSION ?= h700-rc11
 
 # WORKSPACE is the upstream workspace directory name and the runtime device id
 # baked into the binary via -DPLATFORM. It matches PLATFORM for every platform
@@ -32,8 +31,8 @@ else ifeq ($(PLATFORM),tg5050-nextui)
   WORKSPACE = tg5050
   IS_NEXTUI = 1
 else ifeq ($(PLATFORM),h700-nextui)
-  UPSTREAM_REPO = https://github.com/pvaibhav/NextUI
-  UPSTREAM_VERSION = $(H700_VERSION)
+  UPSTREAM_REPO = https://github.com/loveRetro/NextUI
+  UPSTREAM_VERSION = $(NEXTUI_VERSION)
   WORKSPACE = h700
   IS_NEXTUI = 1
 else

@@ -8,9 +8,8 @@ pin moves.
 | Makefile variable | Upstream repo | Covers |
 |---|---|---|
 | `MINUI_VERSION` | `shauninman/MinUI` | every MinUI platform (`tg5040`, `my355`, `rg35xxplus`, `zero28`, and the rest of the CI matrix) |
-| `NEXTUI_VERSION` | `loveRetro/NextUI` | `tg5040-nextui` and `tg5050-nextui` |
+| `NEXTUI_VERSION` | `loveRetro/NextUI` | `tg5040-nextui`, `tg5050-nextui`, and `h700-nextui` |
 | `MY355_NEXTUI_VERSION` | `apommel/NextUI` | `my355-nextui` |
-| `H700_VERSION` | `pvaibhav/NextUI` | `h700-nextui` |
 
 The pinned values themselves live in the Makefile and are deliberately not repeated here, so there
 is one less place for them to drift.
@@ -18,7 +17,7 @@ is one less place for them to drift.
 ## Why a stale pin matters
 
 The upstream trees are pinned by tag, so a firmware release that changes the SDK ABI does not reach
-the build until the pin moves. That is a real failure mode: `h700-rc9` turned the whole
+the build until the pin moves. That is a real failure mode: `h700-rc9` of the former h700 fork turned the whole
 `libmsettings` mute and turbo API into header-only inline stubs, so a binary built against
 `h700-rc3` still linked but died on device with `undefined symbol: GetMute`. `-lmsettings` is a
 shared library, so those symbols are resolved against the firmware's copy at load time, and nothing
@@ -27,15 +26,15 @@ in the build can see the mismatch.
 ## Checking the pins
 
 `scripts/check-upstream-pins.sh` compares each pin against the newest release of its upstream and
-exits non-zero if any differs. Prereleases count as releases (drafts do not), because the h700 and
-my355 forks publish their firmware as prereleases, so GitHub's "latest release" can lag behind what
+exits non-zero if any differs. Prereleases count as releases (drafts do not), because the my355
+fork publishes its firmware as prereleases, so GitHub's "latest release" can lag behind what
 devices run:
 
 ```bash
 bash scripts/check-upstream-pins.sh
 ```
 
-It covers all four pins. The upstreams do not share a version scheme and
+It covers all three pins. The upstreams do not share a version scheme and
 their tags are not orderable against each other, so the script reports "differs", not "behind".
 
 The `upstream-pins` workflow runs the same script weekly and keeps a single tracking issue up to
@@ -55,11 +54,11 @@ date, closing it once every pin matches again.
 2. Watch in particular for a symbol disappearing from `libmsettings`. That is the `GetMute` break
    above, and neither the compile nor the link will catch it.
    If the release notes mention button or SDL input changes, check the device's `platform.c` input
-   path too. `h700-rc11` renumbered the built-in h700 buttons for SDL, which does not reach this
+   path too. `h700-rc11` of the former h700 fork renumbered the built-in h700 buttons for SDL, which does not reach this
    repo because the h700 `platform.c` reads the built-in controls through evdev (see
    [Input on h700](nextui.md#input-on-h700)).
 3. Bump the variable in the Makefile.
-4. Update the literal tag in `tests/makefile.bats` - the pins are asserted there so a
+4. Update the literal tags in `tests/makefile.bats` - the pins are asserted there so a
    bump cannot happen silently.
 5. If the pin is a NextUI one, update its version column in the
    [platform matrix](nextui.md#platform-matrix).
