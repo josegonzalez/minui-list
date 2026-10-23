@@ -33,6 +33,7 @@ EOF
 
     export GH_STUB_TAG_shauninman_MinUI="$(pin MINUI_VERSION)"
     export GH_STUB_TAG_loveRetro_NextUI="$(pin NEXTUI_VERSION)"
+    export GH_STUB_TAG_apommel_NextUI="$(pin MY355_NEXTUI_VERSION)"
     export GH_STUB_TAG_pvaibhav_NextUI="$(pin H700_VERSION)"
 }
 
@@ -45,7 +46,16 @@ pin() { # <VAR>
     [ "$status" -eq 0 ]
     [[ "$output" == *"ok      MINUI_VERSION"* ]]
     [[ "$output" == *"ok      NEXTUI_VERSION"* ]]
+    [[ "$output" == *"ok      MY355_NEXTUI_VERSION"* ]]
     [[ "$output" == *"ok      H700_VERSION"* ]]
+}
+
+@test "reports a differing my355 pin against the apommel NextUI releases" {
+    export GH_STUB_TAG_apommel_NextUI="my355-rc999"
+    run bash "$REPO_ROOT/scripts/check-upstream-pins.sh"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"DIFFERS MY355_NEXTUI_VERSION: pinned $(pin MY355_NEXTUI_VERSION), newest apommel/NextUI release is my355-rc999"* ]]
+    [[ "$output" == *"ok      NEXTUI_VERSION"* ]]
 }
 
 @test "reports a differing pin and exits 1 when a newer release exists" {

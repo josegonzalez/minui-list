@@ -10,9 +10,9 @@
 # libmsettings. Nothing in the build catches that, so this check surfaces a
 # stale pin instead.
 #
-# "Newest" includes prereleases (but not drafts): the h700 fork publishes its
-# firmware as prereleases, so GitHub's "latest release" can lag behind what is
-# actually shipped to devices.
+# "Newest" includes prereleases (but not drafts): the h700 and my355 forks
+# publish their firmware as prereleases, so GitHub's "latest release" can lag
+# behind what is actually shipped to devices.
 #
 # Tags are not comparable as versions across these upstreams (h700-rc9,
 # v6.14.0, v20251127-1), so this is a plain string comparison and reports
@@ -24,11 +24,10 @@ set -u
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# MY355_NEXTUI_VERSION is deliberately absent: it tracks the my355-latest branch
-# rather than a release (see docs/nextui.md), so there is no tag to compare.
 PINS="
 MINUI_VERSION shauninman/MinUI
 NEXTUI_VERSION loveRetro/NextUI
+MY355_NEXTUI_VERSION apommel/NextUI
 H700_VERSION pvaibhav/NextUI
 "
 
