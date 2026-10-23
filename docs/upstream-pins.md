@@ -9,7 +9,7 @@ pin moves.
 |---|---|---|
 | `MINUI_VERSION` | `shauninman/MinUI` | every MinUI platform (`tg5040`, `my355`, `rg35xxplus`, `zero28`, and the rest of the CI matrix) |
 | `NEXTUI_VERSION` | `loveRetro/NextUI` | `tg5040-nextui` and `tg5050-nextui` |
-| `MY355_NEXTUI_VERSION` | `loveRetro/NextUI` | `my355-nextui`, which tracks the `my355-latest` branch rather than a release |
+| `MY355_NEXTUI_VERSION` | `apommel/NextUI` | `my355-nextui` |
 | `H700_VERSION` | `pvaibhav/NextUI` | `h700-nextui` |
 
 The pinned values themselves live in the Makefile and are deliberately not repeated here, so there
@@ -27,15 +27,15 @@ in the build can see the mismatch.
 ## Checking the pins
 
 `scripts/check-upstream-pins.sh` compares each pin against the newest release of its upstream and
-exits non-zero if any differs. Prereleases count as releases (drafts do not), because the h700 fork
-publishes its firmware as prereleases, so GitHub's "latest release" can lag behind what devices run:
+exits non-zero if any differs. Prereleases count as releases (drafts do not), because the h700 and
+my355 forks publish their firmware as prereleases, so GitHub's "latest release" can lag behind what
+devices run:
 
 ```bash
 bash scripts/check-upstream-pins.sh
 ```
 
-It covers `MINUI_VERSION`, `NEXTUI_VERSION`, and `H700_VERSION`. `MY355_NEXTUI_VERSION` is skipped
-because it tracks a branch rather than a release. The upstreams do not share a version scheme and
+It covers all four pins. The upstreams do not share a version scheme and
 their tags are not orderable against each other, so the script reports "differs", not "behind".
 
 The `upstream-pins` workflow runs the same script weekly and keeps a single tracking issue up to
