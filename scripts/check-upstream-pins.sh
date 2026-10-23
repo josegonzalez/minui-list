@@ -7,15 +7,15 @@
 # the top of the Makefile). When a firmware drops or renames a symbol that the
 # upstream api.c calls, a binary built against an older pin still links fine but
 # fails to load on the newer firmware, e.g. the h700-rc9 removal of GetMute from
-# libmsettings. Nothing in the build catches that, so this check surfaces a
-# stale pin instead.
+# libmsettings in the former h700 fork. Nothing in the build catches that, so
+# this check surfaces a stale pin instead.
 #
-# "Newest" includes prereleases (but not drafts): the h700 and my355 forks
-# publish their firmware as prereleases, so GitHub's "latest release" can lag
-# behind what is actually shipped to devices.
+# "Newest" includes prereleases (but not drafts): the my355 fork publishes its
+# firmware as prereleases, so GitHub's "latest release" can lag behind what is
+# actually shipped to devices.
 #
-# Tags are not comparable as versions across these upstreams (h700-rc9,
-# v6.14.0, v20251127-1), so this is a plain string comparison and reports
+# Tags are not comparable as versions across these upstreams (my355-rc.6,
+# v6.15.0, v20251127-1), so this is a plain string comparison and reports
 # "differs", not "behind".
 #
 # Requires the gh CLI, authenticated for read access to public repos.
@@ -28,7 +28,6 @@ PINS="
 MINUI_VERSION shauninman/MinUI
 NEXTUI_VERSION loveRetro/NextUI
 MY355_NEXTUI_VERSION apommel/NextUI
-H700_VERSION pvaibhav/NextUI
 "
 
 stale=0
